@@ -1,0 +1,1102 @@
+```yaml
+openapi: 3.0.3
+info:
+  title: Multi-Agent SWE Benchmark API
+  description: |
+    REST API for the Multi-Agent SWE Benchmark system. Provides access to benchmark
+    run management, task operations, trace event retrieval, metrics aggregation,
+    LLM cache inspection, and dashboard data queries.
+
+    All endpoints are prefixed with /v1. Authentication uses API key via the
+    X-API-Key header. The API is intended for single-machine deployment; there
+    is no multi-user access control beyond the API key.
+  version: 1.0.0
+  contact:
+    name: SWE Benchmark API
+
+servers:
+  - url: http://localhost:8000/v1
+    description: Local development server
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Static API key configured via the API_KEY environment variable.
+        Required on all endpoints.
+
+  parameters:
+    RunIdPath:
+      name: run_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID4 identifier for a benchmark run.
+
+    TaskIdPath:
+      name: task_id
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 255
+      description: Task identifier (e.g. django__django-11099 or a custom task ID).
+
+    EventIdPath:
+      name: event_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: UUID4 identifier for a trace event.
+
+    CacheKeyPath:
+      name: cache_key
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 64
+        maxLength: 64
+        pattern: '^[0-9a-f]{64}$'
+      description: SHA-256 hex digest cache key.
+
+    PageParam:
+      name: page
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      description: Page number for paginated results (1-indexed).
+
+    PageSizeParam:
+      name: page_size
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+      description: Number of items per page.
+
+    SolverFilter:
+      name: solver
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [single, multi]
+      description: Filter by solver type.
+
+    OutcomeFilter:
+      name: outcome
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [PASS, FAIL]
+      description: Filter by task outcome.
+
+    CreatedAfterFilter:
+      name: created_after
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Return only records created at or after this UTC timestamp (ISO 8601).
+
+    CreatedBeforeFilter:
+      name: created_before
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: Return only records created at or before this UTC timestamp (ISO 8601).
+
+  schemas:
+    # -------------------------------------------------------------------------
+    # Shared / primitive schemas
+    # -------------------------------------------------------------------------
+
+    PaginationMeta:
+      type: object
+      required: [page, page_size, total_items, total_pages]
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          example: 1
+        page_size:
+          type: integer
+          minimum: 1
+          maximum: 200
+          example: 50
+        total_items:
+          type: integer
+          minimum: 0
+          example: 142
+        total_pages:
+          type: integer
+          minimum: 0
+          example: 3
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Machine-readable error code.
+              example: NOT_FOUND
+            message:
+              type: string
+              description: Human-readable error description.
+              example: Run record not found.
+            details:
+              type: object
+              additionalProperties: true
+              description: Optional structured details about the error.
+
+    # -------------------------------------------------------------------------
+    # SolverConfig
+    # -------------------------------------------------------------------------
+
+    SolverConfig:
+      type: object
+      required: [solver, max_dev_tester_iterations, max_dev_reviewer_iterations, max_tokens_per_task]
+      properties:
+        solver:
+          type: string
+          enum: [single, multi]
+          description: Solver mode. "single" disables Architect, Tester, and Reviewer nodes.
+          example: multi
+        max_dev_tester_iterations:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 3
+        max_dev_reviewer_iterations:
+          type: integer
+          minimum: 1
+          maximum: 10
+          example: 2
+        max_tokens_per_task:
+          type: integer
+          minimum: 1000
+          maximum: 500000
+          example: 50000
+
+    # -------------------------------------------------------------------------
+    # RunRecord
+    # -------------------------------------------------------------------------
+
+    RunRecord:
+      type: object
+      required:
+        - run_id
+        - task_id
+        - solver_config
+        - outcome
+        - test_output
+        - total_cost_usd
+        - total_tokens
+        - iteration_count
+        - hallucination_score
+        - duration_seconds
+        - created_at
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        task_id:
+          type: string
+          maxLength: 255
+          example: django__django-11099
+        solver_config:
+          $ref: '#/components/schemas/SolverConfig'
+        outcome:
+          type: string
+          enum: [PASS, FAIL]
+          example: PASS
+        test_output:
+          type: string
+          description: Truncated stdout+stderr from the scorer (max 32 KB).
+          example: "===== 12 passed in 1.23s ====="
+        total_cost_usd:
+          type: number
+          format: double
+          minimum: 0
+          example: 0.00312500
+        total_tokens:
+          type: integer
+          minimum: 0
+          example: 12500
+        iteration_count:
+          type: integer
+          minimum: 0
+          description: Sum of dev_tester_iterations and dev_reviewer_iterations.
+          example: 4
+        hallucination_score:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          description: Fraction of patch references that do not exist in the repo (0.0 = none, 1.0 = all).
+          example: 0.0500
+        duration_seconds:
+          type: number
+          format: double
+          minimum: 0
+          example: 47.312
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-06-01T12:00:00Z"
+
+    RunRecordList:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunRecord'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # -------------------------------------------------------------------------
+    # TraceEvent
+    # -------------------------------------------------------------------------
+
+    TraceEvent:
+      type: object
+      required:
+        - event_id
+        - run_id
+        - task_id
+        - agent_role
+        - turn_index
+        - event_type
+        - cache_hit
+        - payload
+        - created_at
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        run_id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        task_id:
+          type: string
+          maxLength: 255
+          example: django__django-11099
+        agent_role:
+          type: string
+          enum: [architect, developer, tester, reviewer, system]
+          example: developer
+        turn_index:
+          type: integer
+          minimum: 0
+          description: Monotonically increasing within (run_id, task_id, agent_role). Starts at 0.
+          example: 2
+        event_type:
+          type: string
+          enum: [llm_call, tool_call, tool_error, budget_exceeded, cache_hit]
+          example: llm_call
+        model:
+          type: string
+          maxLength: 128
+          nullable: true
+          description: Model name. Null for non-LLM events.
+          example: openrouter/mistralai/mixtral-8x7b-instruct
+        prompt_tokens:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Null for non-LLM events.
+          example: 1024
+        completion_tokens:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Null for non-LLM events.
+          example: 512
+        cost_usd:
+          type: number
+          format: double
+          minimum: 0
+          nullable: true
+          description: Null for non-LLM events. Zero for cache-hit events.
+          example: 0.00015000
+        cache_hit:
+          type: boolean
+          example: false
+        payload:
+          type: object
+          additionalProperties: true
+          description: |
+            Arbitrary structured data specific to the event type.
+            - llm_call: {"messages_hash": "...", "temperature": 0.2}
+            - tool_call: {"server": "filesystem", "tool": "read_file", "arguments": {...}, "result_ok": true}
+            - tool_error: {"server": "runcode", "tool": "exec", "error": "ToolDeniedError: curl is not allowed"}
+            - budget_exceeded: {"tokens_used": 50001, "cap": 50000}
+          example:
+            server: filesystem
+            tool: read_file
+            arguments:
+              path: src/foo.py
+            result_ok: true
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-06-01T12:00:05Z"
+
+    TraceEventList:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TraceEvent'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # -------------------------------------------------------------------------
+    # LLMCacheEntry
+    # -------------------------------------------------------------------------
+
+    LLMCacheEntry:
+      type: object
+      required:
+        - cache_key
+        - model
+        - content
+        - prompt_tokens
+        - completion_tokens
+        - cost_usd
+        - created_at
+      properties:
+        cache_key:
+          type: string
+          minLength: 64
+          maxLength: 64
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 hex digest of (model_name || canonical_json(messages)).
+          example: a3f1e2b4c5d6e7f8a3f1e2b4c5d6e7f8a3f1e2b4c5d6e7f8a3f1e2b4c5d6e7f8
+        model:
+          type: string
+          maxLength: 128
+          example: openrouter/mistralai/mixtral-8x7b-instruct
+        content:
+          type: string
+          description: Full text content of the cached LLM response.
+        tool_calls:
+          type: array
+          nullable: true
+          description: Null if the response contained no tool calls.
+          items:
+            $ref: '#/components/schemas/ToolCall'
+        prompt_tokens:
+          type: integer
+          minimum: 0
+          example: 1024
+        completion_tokens:
+          type: integer
+          minimum: 0
+          example: 512
+        cost_usd:
+          type: number
+          format: double
+          minimum: 0
+          description: Cost at time of original call. Replayed responses report cost_usd=0 in TraceEvents.
+          example: 0.00015000
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-06-01T11:58:00Z"
+
+    LLMCacheEntryList:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/LLMCacheEntry'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    ToolCall:
+      type: object
+      required: [id, type, function]
+      properties:
+        id:
+          type: string
+          example: call_abc123
+        type:
+          type: string
+          example: function
+        function:
+          type: object
+          required: [name, arguments]
+          properties:
+            name:
+              type: string
+              example: filesystem__read_file
+            arguments:
+              type: string
+              description: JSON-encoded arguments string.
+              example: '{"path": "src/foo.py"}'
+
+    # -------------------------------------------------------------------------
+    # Task
+    # -------------------------------------------------------------------------
+
+    Task:
+      type: object
+      required: [id, source, issue_text, repo_path, hidden_test_paths]
+      properties:
+        id:
+          type: string
+          maxLength: 255
+          example: django__django-11099
+        source:
+          type: string
+          enum: [swebench, custom]
+          example: swebench
+        issue_text:
+          type: string
+          description: Full text of the issue or ticket.
+        repo_path:
+          type: string
+          description: Absolute path to the provisioned repo snapshot on the host.
+          example: /home/user/.cache/swebench/django__django-11099
+        hidden_test_paths:
+          type: array
+          items:
+            type: string
+          description: Paths to hidden test files used by the scorer.
+          example:
+            - tests/test_issue_11099.py
+
+    TaskList:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Task'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # -------------------------------------------------------------------------
+    # BenchmarkRun (trigger / status)
+    # -------------------------------------------------------------------------
+
+    BenchmarkRunRequest:
+      type: object
+      required: [task_set, solver_config]
+      properties:
+        task_set:
+          type: string
+          description: Name of the task set YAML file (without extension) under config/tasks/.
+          example: lite-30
+        solver_config:
+          $ref: '#/components/schemas/SolverConfig'
+
+    BenchmarkRunStatus:
+      type: object
+      required: [run_id, task_set, solver_config, status, tasks_total, tasks_completed, tasks_passed, tasks_failed, created_at]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        task_set:
+          type: string
+          example: lite-30
+        solver_config:
+          $ref: '#/components/schemas/SolverConfig'
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+          example: running
+        tasks_total:
+          type: integer
+          minimum: 0
+          example: 30
+        tasks_completed:
+          type: integer
+          minimum: 0
+          example: 12
+        tasks_passed:
+          type: integer
+          minimum: 0
+          example: 9
+        tasks_failed:
+          type: integer
+          minimum: 0
+          example: 3
+        total_cost_usd:
+          type: number
+          format: double
+          minimum: 0
+          nullable: true
+          description: Null while the run is in progress.
+          example: 0.04812500
+        duration_seconds:
+          type: number
+          format: double
+          minimum: 0
+          nullable: true
+          description: Null while the run is in progress.
+          example: 1842.5
+        created_at:
+          type: string
+          format: date-time
+          example: "2024-06-01T12:00:00Z"
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: "2024-06-01T12:30:42Z"
+
+    BenchmarkRunStatusList:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/BenchmarkRunStatus'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    # -------------------------------------------------------------------------
+    # Dashboard / Aggregation schemas
+    # -------------------------------------------------------------------------
+
+    RunSummary:
+      type: object
+      required:
+        - run_id
+        - solver
+        - task_count
+        - pass_count
+        - fail_count
+        - pass_rate
+        - avg_cost_usd
+        - total_cost_usd
+        - avg_iterations
+        - avg_hallucination_score
+        - avg_duration_seconds
+        - run_started_at
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        solver:
+          type: string
+          enum: [single, multi]
+          example: multi
+        task_count:
+          type: integer
+          minimum: 0
+          example: 30
+        pass_count:
+          type: integer
+          minimum: 0
+          example: 22
+        fail_count:
+          type: integer
+          minimum: 0
+          example: 8
+        pass_rate:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          example: 0.7333
+        avg_cost_usd:
+          type: number
+          format: double
+          minimum: 0
+          example: 0.00312500
+        total_cost_usd:
+          type: number
+          format: double
+          minimum: 0
+          example: 0.09375000
+        avg_iterations:
+          type: number
+          format: double
+          minimum: 0
+          example: 2.4
+        avg_hallucination_score:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          example: 0.0312
+        avg_duration_seconds:
+          type: number
+          format: double
+          minimum: 0
+          example: 61.4
+        run_started_at:
+          type: string
+          format: date-time
+          example: "2024-06-01T12:00:00Z"
+
+    RunSummaryList:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RunSummary'
+        meta:
+          $ref: '#/components/schemas/PaginationMeta'
+
+    TaskComparison:
+      type: object
+      required: [task_id, results]
+      properties:
+        task_id:
+          type: string
+          maxLength: 255
+          example: django__django-11099
+        results:
+          type: array
+          items:
+            type: object
+            required:
+              - run_id
+              - solver
+              - outcome
+              - total_cost_usd
+              - iteration_count
+              - hallucination_score
+              - duration_seconds
+              - created_at
+            properties:
+              run_id:
+                type: string
+                format: uuid
+              solver:
+                type: string
+                enum: [single, multi]
+              outcome:
+                type: string
+                enum: [PASS, FAIL]
+              total_cost_usd:
+                type: number
+                format: double
+                minimum: 0
+              iteration_count:
+                type: integer
+                minimum: 0
+              hallucination_score:
+                type: number
+                format: double
+                minimum: 0
+                maximum: 1
+              duration_seconds:
+                type: number
+                format: double
+                minimum: 0
+              created_at:
+                type: string
+                format: date-time
+
+    AgentCostBreakdown:
+      type: object
+      required: [run_id, breakdown]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        breakdown:
+          type: array
+          items:
+            type: object
+            required: [agent_role, total_cost_usd, call_count, cache_hit_count, cache_miss_count, total_prompt_tokens, total_completion_tokens]
+            properties:
+              agent_role:
+                type: string
+                enum: [architect, developer, tester, reviewer, system]
+              total_cost_usd:
+                type: number
+                format: double
+                minimum: 0
+                example: 0.02100000
+              call_count:
+                type: integer
+                minimum: 0
+                example: 14
+              cache_hit_count:
+                type: integer
+                minimum: 0
+                example: 3
+              cache_miss_count:
+                type: integer
+                minimum: 0
+                example: 11
+              total_prompt_tokens:
+                type: integer
+                minimum: 0
+                example: 8192
+              total_completion_tokens:
+                type: integer
+                minimum: 0
+                example: 2048
+
+    CostTimeSeries:
+      type: object
+      required: [run_id, series]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        series:
+          type: array
+          description: Cumulative cost over time, one point per LLM call event.
+          items:
+            type: object
+            required: [event_id, task_id, agent_role, cumulative_cost_usd, created_at]
+            properties:
+              event_id:
+                type: string
+                format: uuid
+              task_id:
+                type: string
+              agent_role:
+                type: string
+                enum: [architect, developer, tester, reviewer, system]
+              cumulative_cost_usd:
+                type: number
+                format: double
+                minimum: 0
+              created_at:
+                type: string
+                format: date-time
+
+    HallucinationDetail:
+      type: object
+      required: [run_id, task_id, hallucination_score, missing_paths, missing_symbols]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+        task_id:
+          type: string
+        hallucination_score:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+        missing_paths:
+          type: array
+          items:
+            type: string
+          example:
+            - src/nonexistent_module.py
+        missing_symbols:
+          type: array
+          items:
+            type: string
+          example:
+            - MyClass.nonexistent_method
+
+    # -------------------------------------------------------------------------
+    # Health
+    # -------------------------------------------------------------------------
+
+    HealthResponse:
+      type: object
+      required: [status, version, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, unhealthy]
+          example: ok
+        version:
+          type: string
+          example: 1.0.0
+        checks:
+          type: object
+          required: [database, sandbox]
+          properties:
+            database:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [ok, error]
+                error:
+                  type: string
+                  nullable: true
+            sandbox:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [ok, error]
+                error:
+                  type: string
+                  nullable: true
+
+  responses:
+    BadRequest:
+      description: The request was malformed or failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: "solver must be one of: single, multi"
+
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Invalid or missing X-API-Key header.
+
+    NotFound:
+      description: The requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: NOT_FOUND
+              message: Run record not found.
+
+    Conflict:
+      description: The request conflicts with existing state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: CONFLICT
+              message: A run with this run_id already exists.
+
+    UnprocessableEntity:
+      description: The request was well-formed but semantically invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNPROCESSABLE_ENTITY
+              message: Task set 'nonexistent-set' does not exist under config/tasks/.
+
+    InternalServerError:
+      description: An unexpected server-side error occurred.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: An unexpected error occurred. Check server logs.
+
+paths:
+  # ===========================================================================
+  # Health
+  # ===========================================================================
+
+  /health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      description: |
+        Returns the health status of the API server and its dependencies
+        (Postgres, Docker sandbox). Does not require authentication.
+      security: []
+      tags: [Health]
+      responses:
+        '200':
+          description: Service is healthy or degraded (check individual component statuses).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+                version: 1.0.0
+                checks:
+                  database:
+                    status: ok
+                    error: null
+                  sandbox:
+                    status: ok
+                    error: null
+        '503':
+          description: Service is unhealthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  # ===========================================================================
+  # Benchmark Runs
+  # ===========================================================================
+
+  /runs:
+    get:
+      operationId: listRuns
+      summary: List benchmark runs
+      description: |
+        Returns a paginated list of benchmark run status objects, ordered by
+        creation time descending. Supports filtering by solver type and status.
+      tags: [Runs]
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - $ref: '#/components/parameters/SolverFilter'
+        - $ref: '#/components/parameters/CreatedAfterFilter'
+        - $ref: '#/components/parameters/CreatedBeforeFilter'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pending, running, completed, failed, cancelled]
+          description: Filter by run status.
+      responses:
+        '200':
+          description: Paginated list of benchmark run statuses.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkRunStatusList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      operationId: createRun
+      summary: Trigger a new benchmark run
+      description: |
+        Enqueues a new benchmark run. Generates a fresh run_id (UUID4) and
+        begins executing tasks sequentially. Returns immediately with the
+        run_id and initial status; poll GET /runs/{run_id} for progress.
+
+        The task set must correspond to a YAML file under config/tasks/.
+        The solver_config overrides environment variable defaults for this run.
+      tags: [Runs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BenchmarkRunRequest'
+            example:
+              task_set: lite-30
+              solver_config:
+                solver: multi
+                max_dev_tester_iterations: 3
+                max_dev_reviewer_iterations: 2
+                max_tokens_per_task: 50000
+      responses:
+        '202':
+          description: Run accepted and started. Poll GET /runs/{run_id} for status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkRunStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /runs/{run_id}:
+    get:
+      operationId: getRun
+      summary: Get benchmark run status
+      description: |
+        Returns the current status and aggregate metrics for a benchmark run.
+        While the run is in progress, total_cost_usd and duration_seconds are null.
+      tags: [Runs]
+      parameters:
+        - $ref: '#/components/parameters/RunIdPath'
+      responses:
+        '200':
+          description: Benchmark run status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BenchmarkRunStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      operationId: cancelRun
+      summary: Cancel a running benchmark run
+      description: |
+        Requests cancellation of a benchmark run that is currently in the
+        pending or running state. Tasks already completed are not affected;
+        their run_records remain immutable. The run status transitions to
+        cancelled. Has no effect on completed, failed, or already-cancelled runs.
+      tags: [Runs]
+      parameters:
+        - $ref: '#/components/parameters/RunIdPath'
+      responses:
+        '200':
+          description: Cancellation accepted. Run status is now cancelled or was already terminal.
+          content:
+            application/json:
+              schema:
