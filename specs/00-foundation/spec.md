@@ -19,7 +19,7 @@ Functional requirements addressed by this spec:
 | FR-7   | `make benchmark` exists in the Makefile (with a stub that prints "not yet implemented") — it will be wired up in later specs. |
 | FR-8   | `make clean` stops Docker Compose services, removes `__pycache__` directories, removes `.pytest_cache`, and removes `reports/` and `logs/` content (but not the directories). |
 | FR-47  | A `docker-compose.yml` runs a Postgres 15 container named `benchmark-db` on port 5432, with persistent volume `benchmark-pgdata`, and health check. |
-| FR-48  | `scripts/db_init.sql` creates the `benchmark_db` database and the initial schema: `benchmark_runs`, `task_results`, and `agent_events` tables with correct column types and indices. |
+| FR-48  | `scripts/db_init.sql` creates the `benchmark_db` database and the initial schema (in the `benchmark` schema): `llm_cache`, `trace_events`, and `run_records` tables with correct column types, constraints, and indices, plus the `run_summary` and `task_cost_breakdown` views. This mirrors `planning/04-database-schema.sql`, the implementation-ready full-system design. |
 | FR-49  | A Docker sandbox image is defined in `config/docker/Dockerfile`. It installs Python 3.11, the project's requirements, and `sb-cli`. The image builds successfully (`docker build` exits 0). |
 | FR-50  | `scripts/sandbox_exec.py` is a Python script that runs a given script inside the Docker sandbox container. It accepts `--script` and `--args` parameters, mounts the project root as read-only, and returns the container's exit code. |
 | FR-51  | The `.claude/hooks/block-host-exec.sh` PreToolUse hook is installed and working: attempting to run `python src/agents/` directly in a Bash tool call causes Claude Code to hard-block with exit code 2. |
@@ -38,16 +38,16 @@ Functional requirements addressed by this spec:
 
 All of the following are true and verifiable:
 
-- [ ] `git clone <repo> && cd <repo> && make setup` exits 0 on a fresh macOS or Ubuntu machine with Docker and Python 3.11 installed.
-- [ ] `make lint` exits 0 on the initial codebase (no lint errors in skeleton files).
-- [ ] `make test` exits 0 (skeleton unit tests pass; integration tests that require Postgres skip gracefully if not running).
-- [ ] `docker compose ps` shows `benchmark-db` container in `healthy` state after `make setup`.
-- [ ] `make db-shell` opens a `psql` prompt connected to `benchmark_db` and `\dt` shows the three tables: `benchmark_runs`, `task_results`, `agent_events`.
-- [ ] `docker build -f config/docker/Dockerfile .` exits 0 (sandbox image builds).
-- [ ] `make sandbox-run SCRIPT=scripts/hello_sandbox.py` prints `Hello from sandbox` and exits 0.
-- [ ] The block-host-exec hook blocks a direct host run: simulating `python src/agents/test.py` in Claude Code's Bash tool triggers the hook and shows the safety block message.
-- [ ] `make clean` exits 0 and leaves the repo in a clean state (no containers running, no cache dirs).
-- [ ] No agent-generated code runs on the host at any point during this spec's implementation.
+- [x] `git clone <repo> && cd <repo> && make setup` exits 0 on a fresh macOS or Ubuntu machine with Docker and Python 3.11 installed.
+- [x] `make lint` exits 0 on the initial codebase (no lint errors in skeleton files).
+- [x] `make test` exits 0 (skeleton unit tests pass; integration tests that require Postgres skip gracefully if not running).
+- [x] `docker compose ps` shows `benchmark-db` container in `healthy` state after `make setup`.
+- [x] `make db-shell` opens a `psql` prompt connected to `benchmark_db` and, with `search_path` including `benchmark`, `\dt` shows the three tables: `llm_cache`, `trace_events`, `run_records`, and `\dv` shows the two views: `run_summary`, `task_cost_breakdown`.
+- [x] `docker build -f config/docker/Dockerfile .` exits 0 (sandbox image builds).
+- [x] `make sandbox-run SCRIPT=scripts/hello_sandbox.py` prints `Hello from sandbox` and exits 0.
+- [x] The block-host-exec hook blocks a direct host run: simulating `python src/agents/test.py` in Claude Code's Bash tool triggers the hook and shows the safety block message.
+- [x] `make clean` exits 0 and leaves the repo in a clean state (no containers running, no cache dirs).
+- [x] No agent-generated code runs on the host at any point during this spec's implementation.
 
 ## Depends-On
 
@@ -55,4 +55,4 @@ _(none)_ — This is the foundation spec. It has no dependencies on other specs.
 
 ## Status
 
-In progress.
+Complete.

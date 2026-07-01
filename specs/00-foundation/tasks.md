@@ -6,14 +6,15 @@ Work through in order. Check off each task only after `make lint && make test` p
 
 ## 1. Directory Skeleton
 
-- [ ] Create top-level directories: `src/`, `tests/`, `config/`, `scripts/`, `specs/`, `reports/`, `logs/`, `dashboard/`
-- [ ] Create subdirectories: `config/docker/`, `tests/unit/`, `tests/unit/test_foundation/`, `tests/integration/`
-- [ ] Add `.gitkeep` to empty directories: `reports/`, `logs/`, `dashboard/`
-- [ ] Write `.gitignore`:
+- [x] `git init` the repository (not yet a git repo) — required before `.gitignore` and any git-dependent hooks/tooling are meaningful
+- [x] Create top-level directories: `src/`, `tests/`, `config/`, `scripts/`, `specs/`, `reports/`, `logs/`, `dashboard/`
+- [x] Create subdirectories: `config/docker/`, `tests/unit/`, `tests/unit/test_foundation/`, `tests/integration/`
+- [x] Add `.gitkeep` to empty directories: `reports/`, `logs/`, `dashboard/`
+- [x] Write `.gitignore`:
   - Python standard: `__pycache__/`, `*.pyc`, `*.pyo`, `*.egg-info/`, `dist/`, `build/`, `.venv/`
   - Project-specific: `.env`, `reports/*`, `logs/*`, `!reports/.gitkeep`, `!logs/.gitkeep`
   - Tools: `.ruff_cache/`, `.mypy_cache/`, `.pytest_cache/`
-- [ ] Write `.env.example` with all required env vars:
+- [x] Write `.env.example` with all required env vars:
   ```
   DATABASE_URL=postgresql://postgres:password@localhost:5432/benchmark_db
   POSTGRES_PASSWORD=password
@@ -21,16 +22,16 @@ Work through in order. Check off each task only after `make lint && make test` p
   MAX_TASK_SECONDS=300
   MAX_ITERATIONS=5
   ```
-- [ ] Add `__init__.py` to `src/`, `tests/`, `tests/unit/`, `tests/unit/test_foundation/`, `tests/integration/`
-- [ ] Verify: `find . -name "__init__.py" | grep -v ".venv"` shows all expected locations
+- [x] Add `__init__.py` to `src/`, `tests/`, `tests/unit/`, `tests/unit/test_foundation/`, `tests/integration/`
+- [x] Verify: `find . -name "__init__.py" | grep -v ".venv"` shows all expected locations
 
 ---
 
 ## 2. Python Packaging (`pyproject.toml`)
 
-- [ ] Create `pyproject.toml` with `[build-system]` using `setuptools`
-- [ ] Add `[project]` section: name, version (0.1.0), description, `requires-python = ">=3.11"`, authors
-- [ ] Add `[project.dependencies]`:
+- [x] Create `pyproject.toml` with `[build-system]` using `setuptools`
+- [x] Add `[project]` section: name, version (0.1.0), description, `requires-python = ">=3.11"`, authors
+- [x] Add `[project.dependencies]`:
   ```
   langgraph>=0.2.0
   litellm>=1.40.0
@@ -39,7 +40,7 @@ Work through in order. Check off each task only after `make lint && make test` p
   python-dotenv>=1.0.0
   docker>=7.0.0
   ```
-- [ ] Add `[project.optional-dependencies]` for `dev`:
+- [x] Add `[project.optional-dependencies]` for `dev`:
   ```
   pytest>=8.0.0
   pytest-cov>=5.0.0
@@ -47,20 +48,20 @@ Work through in order. Check off each task only after `make lint && make test` p
   black>=24.0.0
   mypy>=1.10.0
   ```
-- [ ] Add `[tool.ruff]` config: `line-length = 100`, `select = ["E", "F", "I", "UP", "B", "ANN"]`, `ignore = ["ANN101", "ANN102"]`
-- [ ] Add `[tool.ruff.lint.per-file-ignores]`: `"tests/**" = ["ANN"]`
-- [ ] Add `[tool.black]` config: `line-length = 100`, `target-version = ["py311"]`
-- [ ] Add `[tool.pytest.ini_options]`: `testpaths = ["tests"]`, `addopts = "-q"`, `markers = ["integration: requires Docker/Postgres"]`
-- [ ] Create `.venv/`: `python3.11 -m venv .venv`
-- [ ] Activate and install: `.venv/bin/pip install -e ".[dev]"` — exits 0
-- [ ] Verify: `.venv/bin/pip check` — no conflicts
+- [x] Add `[tool.ruff]` config: `line-length = 100`, `select = ["E", "F", "I", "UP", "B", "ANN"]`, `ignore = ["ANN101", "ANN102"]`
+- [x] Add `[tool.ruff.lint.per-file-ignores]`: `"tests/**" = ["ANN"]`
+- [x] Add `[tool.black]` config: `line-length = 100`, `target-version = ["py311"]`
+- [x] Add `[tool.pytest.ini_options]`: `testpaths = ["tests"]`, `addopts = "-q"`, `markers = ["integration: requires Docker/Postgres"]`
+- [x] Create `.venv/`: `python3.11 -m venv .venv`
+- [x] Activate and install: `.venv/bin/pip install -e ".[dev]"` — exits 0
+- [x] Verify: `.venv/bin/pip check` — no conflicts
 
 ---
 
 ## 3. Makefile
 
-- [ ] Create `Makefile` with `.PHONY` declarations for all targets
-- [ ] Implement `setup` target:
+- [x] Create `Makefile` with `.PHONY` declarations for all targets
+- [x] Implement `setup` target:
   ```makefile
   setup: check-docker check-python
       python -m venv .venv
@@ -72,32 +73,32 @@ Work through in order. Check off each task only after `make lint && make test` p
       docker build -f config/docker/Dockerfile -t swe-sandbox:latest . -q
       @echo "Setup complete."
   ```
-- [ ] Implement `lint` target: `ruff check src/ tests/ && black --check src/ tests/`
-- [ ] Implement `test` target: `pytest tests/unit/ tests/integration/ -q`
-- [ ] Implement `benchmark` target (stub):
+- [x] Implement `lint` target: `ruff check src/ tests/ && black --check src/ tests/`
+- [x] Implement `test` target: `pytest tests/unit/ tests/integration/ -q`
+- [x] Implement `benchmark` target (stub):
   ```makefile
   benchmark:
       @echo "Benchmark not yet implemented. See specs/01+ for implementation."
       @exit 1
   ```
-- [ ] Implement `sandbox-run` target:
+- [x] Implement `sandbox-run` target:
   ```makefile
   sandbox-run:
       .venv/bin/python scripts/sandbox_exec.py --script $(SCRIPT) $(if $(ARGS),--args "$(ARGS)",)
   ```
-- [ ] Implement `dashboard` target: `streamlit run dashboard/app.py --server.port 8501`
-- [ ] Implement `db-shell` target: `psql "$(DATABASE_URL)"`
-- [ ] Implement `clean` target: stop compose, remove pycache, clean reports/logs
-- [ ] Add `check-docker` and `check-python` helper targets that exit with error messages if prerequisites are missing
-- [ ] Add `Makefile` variable: `DATABASE_URL ?= $(shell grep DATABASE_URL .env 2>/dev/null | cut -d= -f2-)` with `.env` loading
-- [ ] Verify: `make lint` exits 0 on empty `src/__init__.py`
-- [ ] Verify: `make test` exits 0 (no tests yet, pytest shows "no tests ran")
+- [x] Implement `dashboard` target: `streamlit run dashboard/app.py --server.port 8501`
+- [x] Implement `db-shell` target: `psql "$(DATABASE_URL)"`
+- [x] Implement `clean` target: stop compose, remove pycache, clean reports/logs
+- [x] Add `check-docker` and `check-python` helper targets that exit with error messages if prerequisites are missing
+- [x] Add `Makefile` variable: `DATABASE_URL ?= $(shell grep DATABASE_URL .env 2>/dev/null | cut -d= -f2-)` with `.env` loading
+- [x] Verify: `make lint` exits 0 on empty `src/__init__.py`
+- [x] Verify: `make test` exits 0 (no tests yet, pytest shows "no tests ran")
 
 ---
 
 ## 4. Docker Compose + Postgres
 
-- [ ] Create `config/docker/docker-compose.yml`:
+- [x] Create `config/docker/docker-compose.yml`:
   ```yaml
   services:
     postgres:
@@ -119,22 +120,24 @@ Work through in order. Check off each task only after `make lint && make test` p
   volumes:
     benchmark-pgdata:
   ```
-- [ ] Create `scripts/db_init.sql` with `CREATE TABLE IF NOT EXISTS`:
-  - `benchmark_runs (run_id UUID PRIMARY KEY, solver_mode TEXT, task_set TEXT, started_at TIMESTAMPTZ, finished_at TIMESTAMPTZ, total_tasks INT, resolved_tasks INT, error_tasks INT, total_cost_usd NUMERIC(10,6))`
-  - `task_results (id SERIAL PRIMARY KEY, run_id UUID REFERENCES benchmark_runs, task_id TEXT, status TEXT, resolve_status TEXT, cost_usd NUMERIC(10,6), input_tokens INT, output_tokens INT, iteration_count INT, hallucination_count INT, error_message TEXT, started_at TIMESTAMPTZ, finished_at TIMESTAMPTZ)`
-  - `agent_events (id SERIAL PRIMARY KEY, run_id UUID REFERENCES benchmark_runs, task_id TEXT, agent_name TEXT, turn_index INT, event_type TEXT, input_tokens INT, output_tokens INT, cost_usd NUMERIC(10,6), notes TEXT, created_at TIMESTAMPTZ DEFAULT NOW())`
-  - Add indices: `CREATE INDEX IF NOT EXISTS idx_task_results_run_id ON task_results(run_id)` and similar
-- [ ] Create `scripts/wait_for_postgres.py` — polls `DATABASE_URL` until Postgres is ready (max 30s)
-- [ ] Run: `docker compose -f config/docker/docker-compose.yml up -d`
-- [ ] Verify: `docker compose -f config/docker/docker-compose.yml ps` shows `benchmark-db` as `healthy`
-- [ ] Run: `psql "postgresql://postgres:password@localhost:5432/benchmark_db" -f scripts/db_init.sql` — exits 0
-- [ ] Verify: `make db-shell` opens psql and `\dt` shows 3 tables
+- [x] Create `scripts/db_init.sql`, porting the schema from `planning/04-database-schema.sql` (the implementation-ready full-system design) with `CREATE TABLE IF NOT EXISTS` guards:
+  - `CREATE SCHEMA IF NOT EXISTS benchmark` + `CREATE EXTENSION IF NOT EXISTS pgcrypto`
+  - `llm_cache (cache_key CHAR(64) PRIMARY KEY, model TEXT, content TEXT, tool_calls JSONB, usage JSONB, cost_usd NUMERIC(12,8), created_at TIMESTAMPTZ)` — permanent LLM response cache
+  - `trace_events (event_id UUID PRIMARY KEY, run_id UUID, task_id TEXT, agent_role TEXT, turn_index INT, event_type TEXT, model TEXT, prompt_tokens INT, completion_tokens INT, cost_usd NUMERIC(12,8), cache_hit BOOLEAN, payload JSONB, created_at TIMESTAMPTZ)` — append-only event log
+  - `run_records (run_id UUID, task_id TEXT, solver_config JSONB, outcome TEXT, total_cost_usd NUMERIC(12,8), total_tokens INT, iteration_count INT, hallucination_score NUMERIC(5,4), duration_seconds NUMERIC(10,3), cap_hit BOOLEAN, budget_exceeded BOOLEAN, patch_size_bytes INT, created_at TIMESTAMPTZ, PRIMARY KEY (run_id, task_id))` — one immutable row per (run, task)
+  - Views: `run_summary`, `task_cost_breakdown`
+  - Add indices as specified in `planning/04-database-schema.sql` (e.g. `trace_events_run_id_idx`, `run_records_run_id_idx`, and others)
+- [x] Create `scripts/wait_for_postgres.py` — polls `DATABASE_URL` until Postgres is ready (max 30s)
+- [x] Run: `docker compose -f config/docker/docker-compose.yml up -d`
+- [x] Verify: `docker compose -f config/docker/docker-compose.yml ps` shows `benchmark-db` as `healthy`
+- [x] Run: `psql "postgresql://postgres:password@localhost:5432/benchmark_db" -f scripts/db_init.sql` — exits 0
+- [x] Verify: `make db-shell` opens psql and (with `search_path` including `benchmark`) `\dt` shows 3 tables (`llm_cache`, `trace_events`, `run_records`) and `\dv` shows 2 views (`run_summary`, `task_cost_breakdown`)
 
 ---
 
 ## 5. Docker Sandbox Image
 
-- [ ] Create `config/docker/Dockerfile`:
+- [x] Create `config/docker/Dockerfile`:
   ```dockerfile
   FROM python:3.11-slim
 
@@ -155,16 +158,16 @@ Work through in order. Check off each task only after `make lint && make test` p
   # Default: do nothing (sandbox_exec.py passes the script as CMD)
   ENTRYPOINT ["python"]
   ```
-- [ ] Create `requirements.txt` (subset of deps needed inside the sandbox — NOT all dev deps)
-- [ ] Build: `docker build -f config/docker/Dockerfile -t swe-sandbox:latest .` — exits 0
-- [ ] Verify: `docker run --rm swe-sandbox:latest -c "print('sandbox ok')"` prints `sandbox ok`
-- [ ] Verify: `docker run --rm swe-sandbox:latest -c "import litellm; print(litellm.__version__)"` prints a version
+- [x] Create `requirements.txt` (subset of deps needed inside the sandbox — NOT all dev deps)
+- [x] Build: `docker build -f config/docker/Dockerfile -t swe-sandbox:latest .` — exits 0
+- [x] Verify: `docker run --rm swe-sandbox:latest -c "print('sandbox ok')"` prints `sandbox ok`
+- [x] Verify: `docker run --rm swe-sandbox:latest -c "import litellm; print(litellm.__version__)"` prints a version
 
 ---
 
 ## 6. Sandbox Wrapper + Smoke Test
 
-- [ ] Create `scripts/sandbox_exec.py`:
+- [x] Create `scripts/sandbox_exec.py`:
   - `#!/usr/bin/env python3` shebang + module docstring
   - Argument parser: `--script` (required, path to script), `--args` (optional, string of extra args)
   - Validate that `--script` exists on the host
@@ -182,61 +185,61 @@ Work through in order. Check off each task only after `make lint && make test` p
     ```
   - Run with `subprocess.run(cmd)`, return its exit code
   - Type hints on all functions, docstrings, no bare excepts
-- [ ] Create `scripts/hello_sandbox.py`:
+- [x] Create `scripts/hello_sandbox.py`:
   ```python
   #!/usr/bin/env python3
   """Smoke test script for the Docker sandbox. Prints a marker string and exits 0."""
   print("Hello from sandbox")
   ```
-- [ ] Verify: `make sandbox-run SCRIPT=scripts/hello_sandbox.py` prints `Hello from sandbox` and exits 0
-- [ ] Write `tests/unit/test_foundation/test_sandbox_exec.py`:
+- [x] Verify: `make sandbox-run SCRIPT=scripts/hello_sandbox.py` prints `Hello from sandbox` and exits 0
+- [x] Write `tests/unit/test_foundation/test_sandbox_exec.py`:
   - Import `sandbox_exec` (may need to adjust `sys.path` or make it importable)
   - `test_build_docker_command_basic` — mock subprocess, verify `docker run` args
   - `test_build_docker_command_with_args` — verify extra args are appended
   - `test_script_not_found_raises` — verify `FileNotFoundError` or `SystemExit` when script missing
   - `test_network_none_in_command` — verify `--network none` is present (sandbox rule)
   - `test_readonly_mount_in_command` — verify `:ro` mount flag is present
-- [ ] Verify: `make test` exits 0 with these unit tests passing
+- [x] Verify: `make test` exits 0 with these unit tests passing
 
 ---
 
 ## 7. Claude Code Infrastructure Verification
 
-- [ ] Confirm `.claude/settings.json` is valid JSON: `python -m json.tool .claude/settings.json`
-- [ ] Confirm all hook scripts are executable: `ls -la .claude/hooks/` — all three show `-rwxr-xr-x`
-- [ ] Test block-host-exec hook manually:
+- [x] Confirm `.claude/settings.json` is valid JSON: `python -m json.tool .claude/settings.json`
+- [x] Confirm all hook scripts are executable: `ls -la .claude/hooks/` — all three show `-rwxr-xr-x`
+- [x] Test block-host-exec hook manually:
   - Run a safe command through Claude Code Bash to confirm it passes (e.g., `make --version`)
   - Attempt a blocked command to confirm it's rejected (e.g., try `python src/agents/test.py` — hook should block)
-- [ ] Confirm all agent files exist: `ls .claude/agents/`
-- [ ] Confirm all skill files exist: `ls .claude/skills/*/SKILL.md`
-- [ ] Confirm `.mcp.json` is valid JSON: `python -m json.tool .mcp.json`
+- [x] Confirm all agent files exist: `ls .claude/agents/`
+- [x] Confirm all skill files exist: `ls .claude/skills/*/SKILL.md`
+- [x] Confirm `.mcp.json` is valid JSON: `python -m json.tool .mcp.json`
 
 ---
 
 ## 8. Integration Tests
 
-- [ ] Create `tests/integration/__init__.py`
-- [ ] Create `tests/integration/test_foundation/` directory and `__init__.py`
-- [ ] Write `tests/integration/test_foundation/test_postgres.py`:
+- [x] Create `tests/integration/__init__.py`
+- [x] Create `tests/integration/test_foundation/` directory and `__init__.py`
+- [x] Write `tests/integration/test_foundation/test_postgres.py`:
   - `@pytest.mark.integration`
   - `test_postgres_connection` — connect with psycopg2 using `DATABASE_URL`, run `SELECT 1`
   - `test_tables_exist` — query `information_schema.tables`, verify 3 expected tables exist
   - Both tests use `pytest.importorskip("psycopg2")` and skip if `DATABASE_URL` not set
-- [ ] Write `tests/integration/test_foundation/test_sandbox.py`:
+- [x] Write `tests/integration/test_foundation/test_sandbox.py`:
   - `@pytest.mark.integration`
   - `test_hello_sandbox` — runs `sandbox_exec.py` with `hello_sandbox.py`, checks stdout
   - Skip if Docker not running (`docker ps` fails)
-- [ ] Verify: `make test` runs unit tests and skips integration tests gracefully
-- [ ] Verify (optional, if Docker running): `pytest tests/integration/ -v -m integration` exits 0
+- [x] Verify: `make test` runs unit tests and skips integration tests gracefully
+- [x] Verify (optional, if Docker running): `pytest tests/integration/ -v -m integration` exits 0
 
 ---
 
 ## 9. Final Lint and Format Pass
 
-- [ ] Run `ruff check --fix src/ tests/ scripts/`
-- [ ] Run `black src/ tests/ scripts/`
-- [ ] Run `make lint` — exits 0
-- [ ] Run `make test` — exits 0
+- [x] Run `ruff check --fix src/ tests/ scripts/`
+- [x] Run `black src/ tests/ scripts/`
+- [x] Run `make lint` — exits 0
+- [x] Run `make test` — exits 0
 
 ---
 
@@ -244,13 +247,13 @@ Work through in order. Check off each task only after `make lint && make test` p
 
 Run each done-when criterion from `spec.md` and verify:
 
-- [ ] `make setup` exits 0 (from a clean state: `make clean` first)
-- [ ] `make lint` exits 0
-- [ ] `make test` exits 0
-- [ ] `docker compose -f config/docker/docker-compose.yml ps` shows `benchmark-db` as `healthy`
-- [ ] `make db-shell` → `\dt` → shows `benchmark_runs`, `task_results`, `agent_events`
-- [ ] `docker build -f config/docker/Dockerfile -t swe-sandbox:test .` exits 0
-- [ ] `make sandbox-run SCRIPT=scripts/hello_sandbox.py` prints `Hello from sandbox`
-- [ ] Block-host-exec hook verified working (see task 7)
-- [ ] `make clean` exits 0
-- [ ] Add `## Status: Complete` to `spec.md`
+- [x] `make setup` exits 0 (from a clean state: `make clean` first)
+- [x] `make lint` exits 0
+- [x] `make test` exits 0
+- [x] `docker compose -f config/docker/docker-compose.yml ps` shows `benchmark-db` as `healthy`
+- [x] `make db-shell` → `\dt` → shows `llm_cache`, `trace_events`, `run_records`; `\dv` → shows `run_summary`, `task_cost_breakdown`
+- [x] `docker build -f config/docker/Dockerfile -t swe-sandbox:test .` exits 0
+- [x] `make sandbox-run SCRIPT=scripts/hello_sandbox.py` prints `Hello from sandbox`
+- [x] Block-host-exec hook verified working (see task 7)
+- [x] `make clean` exits 0
+- [x] Add `## Status: Complete` to `spec.md`
