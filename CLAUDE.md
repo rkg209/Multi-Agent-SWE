@@ -142,3 +142,6 @@ tests/
 dashboard/         # Streamlit app
 scripts/           # sandbox_exec.py, db_init.sql, etc.
 ```
+## Git commit policy
+- Never add a `Co-Authored-By: Claude` (or any Anthropic-related) trailer to commit
+  messages. Commit messages should list only human authors.
