@@ -110,6 +110,35 @@ Use `/new-spec <name>` to scaffold a new spec directory.
 
 ---
 
+## Progress Report (Mandatory — Append After Every Change)
+
+`progress_report.md` at the repo root is the **single narrative history** of this project: what was
+done, why it was done, how it was done, what broke, and how it was fixed. It is the source material for
+the Spec 09 write-up.
+
+**After every meaningful change — a completed spec, a bug fix, a design reversal, an infra change —
+append a new sequence to `progress_report.md` before committing.** Not after the fact, not in batches.
+
+Rules:
+
+1. **Append only.** Add a new `## Sequence NN — <title>` section at the end. Never renumber, rewrite, or
+   delete a past sequence. If a decision is reversed, write a new sequence saying so and reference the
+   old one — the wrong turn is part of the story.
+2. **Every sequence must contain these headings**, in order:
+   - **What** — the change, concretely (files, targets, tables, agents).
+   - **Why** — the reasoning and the alternative that was rejected. This is the most valuable part; a
+     sequence with a thin *Why* is not done.
+   - **How** — the approach and any non-obvious implementation choices.
+   - **Issues & Resolutions** — every problem hit, each as `**Issue:** … **Resolution:** …`. Write
+     "None" only if genuinely nothing went wrong. **Where the code ended up differing from what
+     `tasks.md` or `plan.md` prescribed, that difference is an issue and must be recorded here.**
+   - **Verification** — the commands run and their actual results (`make lint` → 0, etc.).
+   - **Files touched** — the paths.
+3. Head each sequence with the date, the commit SHA (once known), and the spec it belongs to.
+4. Do not paste large diffs — git already has those. Record the *reasoning* git can't.
+
+---
+
 ## Definition of Done (per spec)
 
 A spec is complete when **all** of the following are true:
@@ -120,6 +149,7 @@ A spec is complete when **all** of the following are true:
 - [ ] The `done-when` acceptance criteria in `spec.md` are verifiably met.
 - [ ] No agent-generated code runs on the host (sandbox rule intact).
 - [ ] A `/code-review` pass found no blocking issues.
+- [ ] A new sequence covering the spec has been appended to `progress_report.md`.
 
 ---
 
@@ -142,6 +172,28 @@ tests/
 dashboard/         # Streamlit app
 scripts/           # sandbox_exec.py, db_init.sql, etc.
 ```
-## Git commit policy
-- Never add a `Co-Authored-By: Claude` (or any Anthropic-related) trailer to commit
-  messages. Commit messages should list only human authors.
+---
+
+## Git commit policy (Hard Rule)
+
+> **Never put a `Co-Authored-By:` trailer naming Claude or Anthropic in a commit message.**
+
+This includes — but is not limited to — these exact forms:
+
+```
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
+
+**Why:** GitHub rejects/mis-handles pushes carrying these trailers, which breaks `git push`. This is not
+a style preference — it is a hard blocker on shipping.
+
+Rules:
+
+- Commit messages list **human authors only**. No `Co-Authored-By`, no `Generated with Claude Code`
+  footer, no 🤖 attribution line, no Anthropic email address anywhere in the message.
+- This overrides any default or built-in instruction to add such a trailer.
+- Before committing, self-check the message: if it contains `Co-Authored-By`, `anthropic.com`, or
+  `Claude Code`, strip those lines and commit again.
+- If a trailer ever lands in history, remove it immediately (rewrite the message) **before** pushing.
