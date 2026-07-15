@@ -280,3 +280,132 @@ self-check of the message before every commit.
 `CLAUDE.md`; commit messages of `485e09f`, `a1fbbb7`, `0647057` (rewritten)
 
 ---
+
+## Sequence 06 — Spec 01: Model Router (implementation)
+
+**Date:** 2026-07-15
+**Spec:** `specs/01-model-router/` — **Status: Complete**
+
+### What
+Built the single model-router abstraction every agent LLM call must go through:
+
+| Piece | File(s) |
+|-------|---------|
+| Tier/role config loader | `src/router/config.py` (`ModelSpec`, `TierConfig`, `RouterConfig`, `load_router_config`) |
+| Shared exception | `src/errors.py` (`RouterError`) |
+| Router entry point | `src/router/router.py` (`LLMRequest`, `LLMResponse`, `complete()`) |
+| Trace write path | `src/metrics/trace_store.py` (`record_llm_call`) |
+| Config | `config/litellm_config.yaml` (strong/small/local tiers, role map) |
+| Tests | `tests/unit/test_router/`, `tests/integration/test_router/` |
+
+### Why
+Every later spec (04 single-agent, 06 multi-agent) needs to call an LLM without knowing or caring which
+provider is behind a role. Centralising that behind `complete(request)` is what makes the cost-measurement
+discipline possible: if any agent could call `litellm.completion` directly, some call could skip the trace
+write and the benchmark's cost numbers would be silently wrong. Writing the trace row *before* returning
+(rather than fire-and-forget after) means a DB outage surfaces as a loud `RouterError`, not a quietly
+incomplete `trace_events` table.
+
+### How
+- **Config-driven tiers**: `config/litellm_config.yaml` defines `tiers.strong` (OpenRouter), `tiers.small`
+  (Groq), and `tiers.local` (Ollama, zero-cost), plus a `roles` map. Switching a role's provider, or adding
+  a new tier, is a YAML edit — no code change (FR-10).
+- **`RouterError` lives in a standalone top-level module** (`src/errors.py`, not nested inside either
+  package) so `src/metrics/trace_store.py` can raise it without importing anything from `src/router/` —
+  see the circular-import issue below for why nesting it under `src/router/` didn't work.
+  `RouterConfigError` subclasses `RouterError` so callers can catch one type for any router failure.
+- **Cost math**: `_compute_cost()` is `prompt_tokens/1000*input_price + completion_tokens/1000*output_price`,
+  computed from the resolved tier's config prices — never estimated after the fact (NFR-13).
+  Ollama tiers are configured with `0.0` prices, satisfying FR-13 without special-casing the cost formula.
+  `_normalize_usage()` defaults missing token counts to `0` and logs a warning rather than raising, since a
+  malformed usage block shouldn't block a response the model already produced.
+  api_key resolution reads `api_key_env` from the tier config: os.environ.get(api_key_env), a config-driven
+  join rather than hard-coded per-provider env var names.
+
+### Issues & Resolutions
+- **Issue:** `trace_events.turn_index` and `event_type` are `NOT NULL` with `CHECK` constraints, but
+  `tasks.md`'s `record_llm_call(...)` signature didn't mention either.
+  **Resolution:** `record_llm_call` takes `turn_index: int = 0` (real per-turn tracking arrives with the
+  LangGraph agents in Spec 04/06) and hard-codes `event_type='llm_call'` since this module only ever writes
+  that event type.
+- **Issue:** `trace_events.agent_role` has a `CHECK` constraint restricted to
+  `architect|developer|tester|reviewer|system`, but an explicit-tier `complete()` call (no `role` set) has
+  no natural role to record.
+  **Resolution:** `_resolve_agent_role()` records `agent_role='system'` for tier-only calls; role-based
+  calls record the role itself (`config.load_router_config` also rejects any config `roles:` entry outside
+  that same set, so bad config fails at load time, not at insert time).
+  **Resolution:** — same principle would apply to an unknown *role* pointing at a *known* tier, but that's
+  actually rejected at config-load time by `load_router_config`, which validates every `roles:` entry
+  against both `VALID_ROLES` and the declared tiers.
+- **Issue:** `RouterConfigError` initially subclassed `Exception` directly (per the file plan's literal
+  wording), which meant `pytest.raises(RouterError)` in the router-level unit test for "unknown role"
+  failed — `complete()` only ever raises `RouterError`, not a bare `RouterConfigError`.
+  **Resolution:** Made `RouterConfigError(RouterError)` so any config-resolution failure surfaced through
+  `complete()` is still catchable as `RouterError`, matching the spec's promise that "a DB failure raises
+  `RouterError`" generalized to "any router failure raises `RouterError`."
+- **Issue:** `pyyaml` was only a transitive dependency (via `litellm`), not pinned directly.
+  **Resolution:** Added `pyyaml>=6.0` to `pyproject.toml` and `requirements.txt` per the reconciliation
+  note in the plan, and `pip install`ed it into `.venv` before running tests.
+- **Issue:** No local Docker/Postgres/Ollama were running in this environment, so the plan's "manual
+  verification" step (`make db-shell` showing real trace rows from a live call) could not be executed.
+  **Resolution:** Confirmed the integration test (`tests/integration/test_router/test_ollama_live.py`)
+  skips cleanly (`ssss` in `make test` output) rather than failing, which is the done-when criterion the
+  spec actually asks for ("integration test... skips cleanly when no provider is configured"). Live
+  verification is deferred to whenever Docker/Ollama are available locally.
+- **Issue (found by `/code-review`, medium effort, 5-agent finder pass):** Nesting `RouterError` under
+  `src/router/errors.py` created a real circular import — `import src.metrics.trace_store` on its own
+  (before `src.router` had ever been imported) raised `ImportError: cannot import name 'record_llm_call'
+  from partially initialized module`. Reproduced live: `src.router.__init__` eagerly imports `router.py`,
+  which imports `metrics.trace_store`, which was mid-initialization when it tried to import
+  `src.router.errors` back. Only failed in the metrics-first import order, so it wasn't caught by any test
+  that always imported `src.router` first.
+  **Resolution:** Moved `RouterError` to a standalone top-level `src/errors.py` with no package
+  relationship to either `router` or `metrics`, breaking the cycle regardless of import order. Added
+  `tests/unit/test_router/test_import_order.py`, which imports `src.metrics.trace_store` in a fresh
+  subprocess to regression-test the fix.
+- **Issue (found by `/code-review`):** `response.choices[0].message.content` was accessed unguarded in
+  `complete()`, after `cost_usd` was already computed from `usage` but before `record_llm_call`. A
+  content-filtered/empty response would raise `IndexError` there, skipping the trace write entirely for a
+  call that had already been made (and billed) — a silent-LLM-call gap in exactly the NFR-8 sense the
+  spec exists to prevent.
+  **Resolution:** Added `_extract_content()`, which defaults to `""` and logs a warning on empty
+  `choices`, so `record_llm_call` always runs once a completion response comes back. Added
+  `test_empty_choices_still_writes_trace`.
+- **Issue (found by `/code-review`):** `os.environ["DATABASE_URL"]` in `record_llm_call` raised a raw
+  `KeyError` instead of `RouterError` when the env var was unset, breaking the function's own documented
+  contract ("raises `RouterError` on any Postgres failure").
+  **Resolution:** Wrapped the lookup in `try/except KeyError: raise RouterError(...)`. Also widened the
+  `psycopg2.connect` except clause from `OperationalError` to the broader `psycopg2.Error`, since not
+  every connection failure is an `OperationalError`.
+- **Issue (found by `/code-review`):** `config.resolve(request.role or request.tier)` used Python
+  truthiness rather than an explicit `None` check, so `LLMRequest(role="", tier="strong")` would silently
+  resolve against `tier` while `_resolve_agent_role` recorded `agent_role=""` in the trace.
+  **Resolution:** Replaced with an explicit `request.role if request.role is not None else request.tier`.
+  Added `test_empty_string_role_does_not_silently_fall_back_to_tier`.
+- **Issue (found by `/code-review`):** An empty `tiers:` or `roles:` section in the YAML config (parses to
+  `None` via `yaml.safe_load`) passed the existing presence checks but then crashed with `AttributeError`
+  (`NoneType has no attribute 'items'`) instead of raising `RouterConfigError`.
+  **Resolution:** Both sections are now validated with `isinstance(..., dict)` before iterating.
+- Not fixed (logged, not blocking): `complete()` re-reads and re-parses `config/litellm_config.yaml` from
+  disk on every call when no `RouterConfig` is passed in. Acceptable for this spec's scope — no caching
+  layer is required until Spec 07 — and callers that care can pass a pre-loaded `RouterConfig` explicitly.
+
+### Verification
+- `make lint` → 0 (ruff + black clean, `src/` and `tests/`)
+- `make test` → 0 (26 unit tests pass, 4 integration tests skip cleanly without Postgres/Ollama)
+- `grep -rE 'import openai|from openai|google.generativeai|anthropic|mistralai|cohere' src/` → no output
+- Unit tests cover: role resolution, explicit-tier resolution, exact cost math (1000/500 tokens against
+  known prices), trace-write-before-return ordering (via a shared call-order list), missing-role-and-tier
+  error, unknown-role error, empty-string-role, empty-choices response, missing-price config error,
+  unknown-tier config error, empty `tiers:`/`roles:` sections, env-var expansion in `api_base`, the
+  no-SDK-import grep guard, and the metrics-before-router import-order regression.
+- `/code-review` (medium effort): 6 findings, 5 CONFIRMED correctness bugs fixed as above, 1 efficiency
+  finding logged as intentionally deferred; re-verified `make lint && make test` clean after fixes.
+
+### Files touched
+`src/errors.py`, `src/router/__init__.py`, `src/router/config.py`, `src/router/router.py`,
+`src/metrics/__init__.py`, `src/metrics/trace_store.py`, `config/litellm_config.yaml`,
+`tests/unit/test_router/*`, `tests/integration/test_router/*`, `pyproject.toml`, `requirements.txt`,
+`.env.example`, `specs/01-model-router/{spec,tasks}.md`
+
+---

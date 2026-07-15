@@ -44,3 +44,7 @@ All of the following are true and verifiable:
 ## Depends-On
 
 - `specs/00-foundation` — Postgres (`trace_events`, `llm_cache` tables), Makefile, `.env`, pyproject deps (LiteLLM already pinned).
+
+## Status
+
+Complete.
