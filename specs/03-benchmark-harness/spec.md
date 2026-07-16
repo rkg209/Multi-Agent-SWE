@@ -33,17 +33,21 @@ Functional requirements addressed:
 
 All of the following are true and verifiable:
 
-- [ ] `benchmark/cli.py` parses `TASKS` and `SOLVER` args and drives the harness loop; `make benchmark` wires to it (replacing the Spec 00 stub).
-- [ ] A version-locked config (e.g. `config/tasks/lite-5.txt`, `lite-30.txt`) lists SWE-bench task IDs; custom tickets live under `benchmark/tasks/custom/` with issue text + hidden tests.
-- [ ] The task loader returns a uniform `Task` object for both SWE-bench and custom tickets.
-- [ ] SWE-bench scoring goes through `sb-cli` / the official harness; custom tickets go through the in-repo deterministic scorer (patch → sandbox → hidden tests → PASS/FAIL).
-- [ ] `make benchmark TASKS=lite-5 SOLVER=noop` completes without error and writes 5 immutable FAIL rows to `run_records`, then prints a summary table to stdout.
-- [ ] Re-running the same command writes **new** rows (different `run_id`), never overwriting (NFR-6).
-- [ ] Requesting more than the cap (50+5) without `--override` is refused with a clear error (C-2).
-- [ ] The custom scorer returns identical PASS/FAIL on repeated runs of the same patch (NFR-5).
-- [ ] `make lint` exits 0.
-- [ ] `make test` exits 0 (unit tests mock `sb-cli`/sandbox; integration tests that need Docker/`sb-cli` skip cleanly).
-- [ ] No agent-generated code runs on the host (sandbox rule intact).
+- [x] `benchmark/cli.py` parses `TASKS` and `SOLVER` args and drives the harness loop; `make benchmark` wires to it (replacing the Spec 00 stub).
+- [x] A version-locked config (e.g. `config/tasks/lite-5.txt`, `lite-30.txt`) lists SWE-bench task IDs; custom tickets live under `benchmark/tasks/custom/` with issue text + hidden tests.
+- [x] The task loader returns a uniform `Task` object for both SWE-bench and custom tickets.
+- [x] SWE-bench scoring goes through `sb-cli` / the official harness; custom tickets go through the in-repo deterministic scorer (patch → sandbox → hidden tests → PASS/FAIL).
+- [x] `make benchmark TASKS=lite-5 SOLVER=noop` completes without error and writes immutable FAIL rows to `run_records` (7: the 5 `lite-5.txt` SWE-bench IDs + the 2 always-included custom tickets — see progress_report.md for why the row count is 7, not 5), then prints a summary table to stdout.
+- [x] Re-running the same command writes **new** rows (different `run_id`), never overwriting (NFR-6).
+- [x] Requesting more than the cap (50+5) without `--override` is refused with a clear error (C-2).
+- [x] The custom scorer returns identical PASS/FAIL on repeated runs of the same patch (NFR-5).
+- [x] `make lint` exits 0.
+- [x] `make test` exits 0 (unit tests mock `sb-cli`/sandbox; integration tests that need Docker/`sb-cli` skip cleanly).
+- [x] No agent-generated code runs on the host (sandbox rule intact).
+
+## Status
+
+Complete.
 
 ## Depends-On
 

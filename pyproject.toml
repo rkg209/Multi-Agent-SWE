@@ -17,6 +17,7 @@ dependencies = [
     "docker>=7.0.0",
     "pyyaml>=6.0",
     "mcp>=1.0.0",
+    "sb-cli>=0.1.0,<0.2.0",
 ]
 
 [project.optional-dependencies]

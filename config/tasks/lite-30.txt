@@ -1,0 +1,33 @@
+# Version-locked SWE-bench Lite subset (30 tasks) — NFR-7. Superset of lite-5.txt.
+# Dataset: princeton-nlp/SWE-bench_Lite, split: test.
+# Do not edit in place; add a new file for a different subset.
+astropy__astropy-12907
+django__django-11099
+django__django-11133
+django__django-11179
+django__django-11283
+django__django-11422
+django__django-11564
+django__django-11583
+django__django-11749
+django__django-11815
+django__django-11848
+django__django-11905
+django__django-11910
+django__django-11964
+django__django-11999
+django__django-12113
+django__django-12125
+django__django-12184
+django__django-12284
+django__django-12308
+django__django-12406
+django__django-12419
+django__django-12663
+django__django-12708
+django__django-12747
+django__django-12856
+django__django-13012
+django__django-13023
+django__django-13028
+django__django-13033

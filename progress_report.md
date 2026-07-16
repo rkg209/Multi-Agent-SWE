@@ -623,3 +623,125 @@ gives simpler, more debuggable commit identity.
 `tests/integration/test_tools/*`, `progress_report.md`
 
 ---
+
+## Sequence 09 — Spec 03: Benchmark Harness
+
+**Date:** 2026-07-16
+**Commit:** pending (not yet committed at time of writing)
+**Spec:** `specs/03-benchmark-harness`
+
+### What
+
+Built the measurement loop that turns "a solver" into "a scored, immutable row": `benchmark/loader.py`
+(uniform `Task` abstraction over SWE-bench instance IDs and in-repo custom tickets), `benchmark/solver.py`
+(`Solver` protocol + `NoopSolver`, empty-patch-only in this spec), `benchmark/scorer.py` (dispatches by
+`task.source`), `benchmark/sbcli.py` (thin wrapper around the real `sb-cli` binary), `benchmark/results.py`
+(`write_run_record` — immutable INSERT into `benchmark.run_records`), and `benchmark/cli.py` (the
+`TASKS`/`SOLVER`-driven loop, wired into `make benchmark`, replacing the Spec 00 stub). Added
+`config/tasks/lite-5.txt`/`lite-30.txt` (version-locked SWE-bench Lite instance IDs) and two custom
+ticket fixtures under `benchmark/tasks/custom/` (`custom-001-calc-add`, `custom-002-str-reverse`), each
+with `issue.md`, a `base/` snapshot, a `hidden_test.py`, and `meta.json`.
+
+### Why
+
+FR-20–FR-25/NFR-5–NFR-7/C-2 all describe the same goal: prove the harness end-to-end with a solver that
+does nothing (empty patch), before any real solver exists (Specs 04/06). The alternative — building the
+harness and a real solver together — was rejected because it would make it impossible to tell whether a
+FAIL came from the harness being wrong or the solver being wrong; the no-op solver isolates that. Reusing
+`sb-cli`/the official harness for SWE-bench scoring (rather than reimplementing dataset fetch + test
+execution) was non-negotiable per FR-21/C-6 — SWE-bench's environment setup is exactly the "top project
+risk" `plan.md` called out, so wrapping the existing tool was the only viable choice within this spec's
+scope.
+
+### How
+
+Loader → solver → scorer → results-writer, all driven by `cli.py`, exactly as `plan.md` specified. The
+custom scorer copies the ticket's `base/` snapshot to a temp dir, `git init`s a baseline commit (host-side
+— patch application is a fixed VCS operation, not untrusted-code execution, mirroring Spec 02's
+git-server precedent), `git apply`s the patch, copies the hidden test file in, and runs `pytest` through
+`src.sandbox.docker_sandbox.run` — the only exec path for the patched code itself (NFR-1 stays intact).
+The results writer mirrors `src/metrics/trace_store.py`'s connect/insert/finally-close shape almost
+exactly, `INSERT ... ON CONFLICT (run_id, task_id) DO NOTHING` into the already-existing `run_records`
+table from Spec 00 (no migration needed). `cli.py` mints one `run_id = uuid.uuid4()` per invocation.
+
+The `sb-cli` integration required discovery, not assumption: `pip install sb-cli` and reading the
+installed `0.1.5` package's actual source (`submit.py`, `get_report.py`) revealed it's a **hosted-API**
+CLI (`SWEBENCH_API_KEY` against `api.swebench.com`), not a local test runner. `run_sbcli_eval` writes a
+one-instance predictions JSON, shells `sb-cli submit <subset> <split> --predictions_path ... --run_id ...
+--instance_ids <task_id> -o <dir>`, and reads back the report JSON `sb-cli` writes. Availability
+(`SWEBENCH_API_KEY` set + `sb-cli` on `PATH`) is checked before every call; unavailability raises
+`HarnessError`, which `scorer.py` catches and turns into a recorded FAIL — never a crash — keeping
+`make benchmark TASKS=lite-5 SOLVER=noop` runnable with zero external credentials.
+
+### Issues & Resolutions
+
+- **Issue:** Reading `sb-cli`'s real source turned up a correctness bug in the first draft of
+  `run_sbcli_eval`: it passed the *shared benchmark `run_id`* straight through to `sb-cli --run_id` for
+  every task. `sb-cli`'s `get_report` (`safe_save_json` in the installed package) only overwrites an
+  existing report file when `--overwrite 1` (default `0`) — calling `submit` a second time for the same
+  `subset`/`split`/`run_id` silently diverts the new report to a `-1`-suffixed file instead of the path
+  `run_sbcli_eval` reads. Since `cli.py` calls `score()` once per task, all sharing one benchmark
+  `run_id`, every SWE-bench task after the first in a subset would have silently read back the *first*
+  task's stale report — wrong PASS/FAIL for the rest of the SWE-bench portion of any multi-task run. This
+  was caught by the mandatory `/code-review` pass (medium effort), not by testing, since no unit or
+  integration test exercises the real API (no `SWEBENCH_API_KEY` available in this environment).
+  **Resolution:** `run_sbcli_eval` now scopes the `sb-cli`-facing run id per task
+  (`f"{run_id}-{task_id}"`), so every task's report filename is unique and the collision-avoidance path
+  in `get_report` never triggers. Added a regression test
+  (`test_run_sbcli_eval_scopes_run_id_per_task_to_avoid_report_collision`) that mocks two `submit` calls
+  sharing one benchmark `run_id` and asserts each reads its own report.
+- **Issue:** `tasks.md`/`plan.md` said `make benchmark TASKS=lite-5 SOLVER=noop` writes **5** FAIL rows,
+  but `load_tasks()` always appends every custom ticket (FR-20's "two sources" design) regardless of the
+  requested SWE-bench subset, so the real row count for `lite-5` is **7** (5 SWE-bench + 2 custom).
+  **Resolution:** Kept the two-sources-always-combined design (it's what FR-20/Done-When 2 actually ask
+  for — custom tickets scored on every run, not opt-in) rather than changing the loader to match the
+  literal "5" in the wording; corrected the expectation in `spec.md`'s Done-When list and in this entry
+  rather than silently under-delivering the custom-ticket coverage.
+- **Issue:** `Task.issue_text` for SWE-bench tasks is `""` — the loader only carries the instance ID; full
+  issue text/repo state is left to `sb-cli` to resolve at scoring time (Spec 03 explicitly doesn't
+  reimplement dataset fetching, FR-21). `plan.md`'s uniform-`Task`-shape decision implied issue text would
+  be populated for both sources; it isn't for SWE-bench. **Resolution:** Deliberate scope cut — no real
+  solver in this spec would use it (`NoopSolver` ignores its argument entirely), and dataset-fetching
+  logic firmly belongs to Specs 04/06 when a real solver needs the issue text to reason about a fix. Flagged
+  here so 04/06 don't assume it's already wired.
+- **Issue:** `make lint`'s target only checked `src/ tests/`, so the new `benchmark/` package wasn't
+  linted by `make lint` at all despite `ruff`/`black` conventions applying to it per CLAUDE.md.
+  **Resolution:** Added `benchmark/` to both the `ruff check` and `black --check` invocations in the
+  `lint` Makefile target.
+- **Issue:** A first draft of `benchmark/scorer.py::_score_custom` had a leftover duplicate line
+  (`_run_git(repo_dir, ["apply", ...])` immediately followed by the real `subprocess.run(...)` call with
+  patch content piped via stdin) left over from switching git-apply from the no-stdin `_run_git` helper
+  to a direct `subprocess.run` call that needed `input=patch.diff`. **Resolution:** Caught on
+  self-review before running tests; removed the dead first call.
+
+### Verification
+
+- `make benchmark TASKS=lite-5 SOLVER=noop` (Docker + Postgres live) → exit 0, prints a 7-row summary
+  table, all FAIL; confirmed via `psql`: `SELECT run_id, task_id, outcome FROM benchmark.run_records` →
+  7 rows for that `run_id`.
+- Re-ran the same command → a second, distinct `run_id`; `SELECT COUNT(*), COUNT(DISTINCT run_id)` →
+  `(14, 2)` — proves NFR-6 immutability (re-runs INSERT, never overwrite).
+- Manually scored a hand-written *correct* patch for `custom-001-calc-add` through `benchmark.scorer.score`
+  → `ScoreResult(outcome='PASS')`, versus the no-op empty patch → `FAIL` — proves the custom scorer isn't
+  hardcoded to always-FAIL.
+- `make benchmark TASKS=lite-60-test SOLVER=noop` (a fabricated 60-ID config) → refused with
+  `"exceeding the cap"` and a non-zero exit, without `--override` (C-2).
+- `make lint` → 0 (`ruff check` + `black --check`, now including `benchmark/`).
+- `make test` → 87 passed, 1 skipped (Ollama-live only), 0 failed — includes the two Docker-gated
+  integration tests (`make benchmark` end-to-end + the real custom-scorer fixture) and 29 harness unit
+  tests (loader, solver, `sbcli` wrapper, scorer, results writer), all mocking `sb-cli`'s `subprocess`
+  boundary directly per `plan.md`'s testing strategy.
+- `/code-review` (medium effort) pass run against the new `benchmark/` package; 1 confirmed finding (the
+  `sb-cli` run-id/report-collision bug above), fixed and covered by a new regression test; re-verified
+  `make lint`/`make test` green after the fix.
+
+### Files touched
+
+`benchmark/__init__.py`, `benchmark/errors.py`, `benchmark/loader.py`, `benchmark/solver.py`,
+`benchmark/scorer.py`, `benchmark/sbcli.py`, `benchmark/results.py`, `benchmark/cli.py`,
+`benchmark/tasks/custom/custom-001-calc-add/*`, `benchmark/tasks/custom/custom-002-str-reverse/*`,
+`config/tasks/lite-5.txt`, `config/tasks/lite-30.txt`, `tests/unit/test_harness/*`,
+`tests/integration/test_harness/*`, `Makefile`, `pyproject.toml`, `.claude/plans/03-benchmark-harness.md`,
+`specs/03-benchmark-harness/tasks.md`, `specs/03-benchmark-harness/spec.md`, `progress_report.md`
+
+---

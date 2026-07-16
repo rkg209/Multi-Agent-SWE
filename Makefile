@@ -25,15 +25,17 @@ setup: check-docker check-python
 	@echo "Setup complete."
 
 lint:
-	$(VENV)/bin/ruff check src/ tests/
-	$(VENV)/bin/black --check src/ tests/
+	$(VENV)/bin/ruff check src/ benchmark/ tests/
+	$(VENV)/bin/black --check src/ benchmark/ tests/
 
 test:
 	$(VENV)/bin/pytest tests/unit/ tests/integration/ -q
 
+TASKS ?= lite-5
+SOLVER ?= noop
+
 benchmark:
-	@echo "Benchmark not yet implemented. See specs/01+ for implementation."
-	@exit 1
+	DATABASE_URL="$(DATABASE_URL)" TASKS="$(TASKS)" SOLVER="$(SOLVER)" $(VENV)/bin/python -m benchmark.cli
 
 sandbox-run:
 ifdef CMD
