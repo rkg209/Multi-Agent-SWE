@@ -31,15 +31,15 @@ Functional requirements addressed:
 
 All of the following are true and verifiable:
 
-- [ ] `config/litellm_config.yaml` defines a strong tier and a small/fast tier, each mapping a role to a model + provider + per-token price, with at least two distinct providers configured.
-- [ ] A single function (e.g. `src/router/router.py::complete(request)`) returns a completion from a hosted open provider **and** from a local Ollama endpoint, selected purely by config/env — no code change to switch.
-- [ ] Every call writes one `trace_events` row (provider, model, prompt_tokens, completion_tokens, cost_usd) to Postgres **before** the response is returned to the caller.
-- [ ] Cost is computed from the per-token prices in config; a unit test asserts the computed `cost_usd` matches the expected value for known token counts.
-- [ ] Requesting a tier (`strong` / `small`) resolves to the configured model for that tier without the caller naming a model.
-- [ ] `grep -rE 'import openai|from openai|google.generativeai|anthropic|mistralai|cohere' src/` returns nothing — all calls go through LiteLLM.
-- [ ] `make lint` exits 0.
-- [ ] `make test` exits 0 (unit tests mock LiteLLM + the DB; integration test that hits a live/local model skips cleanly when no provider is configured).
-- [ ] No agent-generated code runs on the host (sandbox rule intact).
+- [x] `config/litellm_config.yaml` defines a strong tier and a small/fast tier, each mapping a role to a model + provider + per-token price, with at least two distinct providers configured.
+- [x] A single function (e.g. `src/router/router.py::complete(request)`) returns a completion from a hosted open provider **and** from a local Ollama endpoint, selected purely by config/env — no code change to switch.
+- [x] Every call writes one `trace_events` row (provider, model, prompt_tokens, completion_tokens, cost_usd) to Postgres **before** the response is returned to the caller.
+- [x] Cost is computed from the per-token prices in config; a unit test asserts the computed `cost_usd` matches the expected value for known token counts.
+- [x] Requesting a tier (`strong` / `small`) resolves to the configured model for that tier without the caller naming a model.
+- [x] `grep -rE 'import openai|from openai|google.generativeai|anthropic|mistralai|cohere' src/` returns nothing — all calls go through LiteLLM.
+- [x] `make lint` exits 0.
+- [x] `make test` exits 0 (unit tests mock LiteLLM + the DB; integration test that hits a live/local model skips cleanly when no provider is configured).
+- [x] No agent-generated code runs on the host (sandbox rule intact).
 
 ## Depends-On
 

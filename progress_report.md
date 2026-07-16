@@ -409,3 +409,87 @@ incomplete `trace_events` table.
 `.env.example`, `specs/01-model-router/{spec,tasks}.md`
 
 ---
+
+## Sequence 07 — Live verification pass on Spec 00 + Spec 01 (Docker/Postgres now available)
+
+**Date:** 2026-07-16
+**Specs:** `specs/00-foundation`, `specs/01-model-router` — verification, not new implementation
+
+### What
+Ran a full, live end-to-end verification of both completed specs now that Docker Desktop was available in
+this environment (it was not running during Sequence 02/06, so those verifications relied on unit tests and
+code inspection for the Docker/Postgres-dependent paths). Started Docker, then ran `make clean` → `make
+setup` → `make lint` → `make test` → `make db-shell` inspection → `make sandbox-run` → a direct invocation
+of `block-host-exec.sh` with both a blocked and an allowed command. Found and fixed two real bugs in the
+process.
+
+### Why
+The progress report and both specs' `tasks.md` claimed full verification, but several done-when criteria
+in `specs/01-model-router/spec.md` were still checkbox-`[ ]` despite the spec's own `## Status: Complete`
+— a documentation/reality mismatch worth resolving by actually exercising the infrastructure rather than
+trusting the prior record.
+
+### How
+- Confirmed `make lint` and `make test` were already green from a prior run without Docker (23 passed, 4
+  skipped — the Docker/Postgres-dependent integration tests skipping cleanly, as designed).
+- Started Docker Desktop, then exercised the full Docker-dependent path for real: `make setup` from a
+  clean state, live `\dt`/`\dv` inspection via `make db-shell` showing all 3 tables + 2 views, `make
+  sandbox-run` printing `Hello from sandbox`, and re-ran `make test` — now 26 passed, 1 skipped (only the
+  Ollama-live test skips, since no local Ollama server was running).
+- Verified `block-host-exec.sh` directly by piping synthetic PreToolUse JSON at it: a `python
+  src/agents/test.py` command got exit code 2 with the safety-block message; `make lint` passed through
+  with exit code 0.
+- Verified the git-history purge from Sequence 05 is still intact: `git log main --format='%B' | grep -i
+  "co-authored\|anthropic"` returns nothing; the old pre-rewrite SHAs only exist in `refs/stash` (never
+  pushed), not in any branch.
+
+### Issues & Resolutions
+- **Issue:** `docker compose -f config/docker/docker-compose.yml ...` was invoked from the repo root
+  throughout the Makefile, but Docker Compose resolves its implicit `.env` file relative to the **compose
+  file's directory** (`config/docker/`), not the caller's working directory. Reproduced directly:
+  `docker compose -f config/docker/docker-compose.yml config` showed `POSTGRES_PASSWORD: password` even
+  with a root `.env` setting `POSTGRES_PASSWORD=roottest` present — a real environment-variable that
+  `.env.example` documents as configurable was silently ignored. The same root cause affected
+  `scripts/wait_for_postgres.py`: the Makefile's `DATABASE_URL` variable was never exported to that
+  subprocess's environment, so a custom `DATABASE_URL` in `.env` would silently be ignored there too,
+  even though `make db-shell`/`psql` calls elsewhere already read it correctly via the `DATABASE_URL`
+  make variable.
+  **Resolution:** Added `ENV_FILE := $(if $(wildcard .env),--env-file .env,)` to the Makefile (empty when
+  no `.env` exists yet, so a fresh clone's first `make setup` still works against defaults) and passed
+  `$(ENV_FILE)` to every `docker compose` invocation (`setup`, `db-shell`, `clean`). Also changed the
+  `wait_for_postgres.py` invocation in `setup` to explicitly export `DATABASE_URL="$(DATABASE_URL)"` into
+  that subprocess's environment. Re-verified: with a root `.env` containing `POSTGRES_PASSWORD=roottest`,
+  `docker compose ... --env-file .env config` now correctly resolves to `roottest`.
+- **Issue:** `make clean`'s `docker compose down` did not pass `-v`, so the Postgres volume
+  (`docker_benchmark-pgdata`) survived a clean — silently contradicting CLAUDE.md's own Make Targets table,
+  which documents `make clean` as "stop containers, drop volumes, remove `__pycache__`".
+  **Resolution:** Changed `clean` to `docker compose ... down -v`. Re-verified: `docker volume ls` shows no
+  `benchmark-pgdata` volume after `make clean`, and a subsequent `make setup` still recreates the schema
+  from scratch correctly (confirmed via `\dt`/`\dv`).
+- **Issue:** `specs/01-model-router/spec.md`'s done-when section had all 9 boxes unchecked (`[ ]`) despite
+  `## Status: Complete` and a fully checked `tasks.md` — a stale-documentation gap, not a functional bug.
+  **Resolution:** Checked each criterion against a live re-verification (grep for provider SDK imports,
+  live Postgres write path, `make lint`/`make test` exit codes, sandbox rule) and checked all 9 boxes.
+- No functional regressions found in `src/router/`, `src/metrics/`, or the sandbox wrapper — the
+  correctness bugs found and fixed in Sequence 06's `/code-review` pass are still fixed and covered by
+  their regression tests.
+
+### Verification
+- `make lint` → 0
+- `make test` → 26 passed, 1 skipped (Ollama-live only), up from 23 passed/4 skipped pre-Docker
+- `make setup` from `make clean` state → exits 0, twice (once before the Makefile fix to establish the bug,
+  once after to confirm the fix and no regression)
+- `docker compose ... ps` → `benchmark-db` healthy
+- `make db-shell` → `\dt` shows `llm_cache`, `run_records`, `trace_events`; `\dv` shows `run_summary`,
+  `task_cost_breakdown`
+- `make sandbox-run SCRIPT=scripts/hello_sandbox.py` → `Hello from sandbox`, exit 0
+- `echo '{"tool_input":{"command":"python src/agents/test.py"}}' | .claude/hooks/block-host-exec.sh` → exit
+  2, safety-block message; same with `make lint` as the command → exit 0
+- `grep -rE 'import openai|from openai|google.generativeai|anthropic|mistralai|cohere' src/` → no output
+- `git log main --format='%B' | grep -ci "co-authored\|anthropic"` → 0
+- `docker volume ls | grep benchmark` → empty immediately after `make clean` (post-fix)
+
+### Files touched
+`Makefile`, `specs/01-model-router/spec.md`, `progress_report.md`
+
+---
