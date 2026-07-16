@@ -36,7 +36,11 @@ benchmark:
 	@exit 1
 
 sandbox-run:
+ifdef CMD
+	$(VENV)/bin/python scripts/sandbox_exec.py --cmd "$(CMD)"
+else
 	$(VENV)/bin/python scripts/sandbox_exec.py --script $(SCRIPT) $(if $(ARGS),--args "$(ARGS)",)
+endif
 
 dashboard:
 	$(VENV)/bin/streamlit run dashboard/app.py --server.port 8501

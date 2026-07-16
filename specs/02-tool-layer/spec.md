@@ -31,16 +31,20 @@ Functional requirements addressed:
 
 All of the following are true and verifiable:
 
-- [ ] `src/tools/filesystem_server.py`, `src/tools/runcode_server.py`, `src/tools/git_server.py` exist as MCP servers (stdio transport) exposing their documented tools.
-- [ ] `src/sandbox/docker_sandbox.py` creates a per-task container, runs a command, returns `(stdout, stderr, exit_code)`, and tears it down (`--rm`), with `--network none`, non-root user, `--cap-drop ALL`, read-only root FS, and only the task dir mounted.
-- [ ] The run-code server refuses any exec that targets a path outside the mounted task dir or attempts host execution, returning a **structured error** (not a crash).
-- [ ] An agent-style caller (test driver) can, against a sample repo snapshot: read a file, write a file, list a dir, check existence, run `pytest` in the sandbox, and get a git diff of its change.
-- [ ] `make sandbox-run CMD="python -c 'print(42)'"` prints `42` with exit code 0 (extends the Spec 00 `SCRIPT=` form to accept `CMD=`).
-- [ ] A test asserts the sandbox has no host network access (e.g. a command needing the network fails inside the sandbox).
-- [ ] `make lint` exits 0.
-- [ ] `make test` exits 0 (unit tests mock Docker/subprocess; integration tests that need Docker skip cleanly when Docker is unavailable).
-- [ ] No agent-generated code runs on the host (sandbox rule intact).
+- [x] `src/tools/filesystem_server.py`, `src/tools/runcode_server.py`, `src/tools/git_server.py` exist as MCP servers (stdio transport) exposing their documented tools.
+- [x] `src/sandbox/docker_sandbox.py` creates a per-task container, runs a command, returns `(stdout, stderr, exit_code)`, and tears it down (`--rm`), with `--network none`, non-root user, `--cap-drop ALL`, read-only root FS, and only the task dir mounted.
+- [x] The run-code server refuses any exec that targets a path outside the mounted task dir or attempts host execution, returning a **structured error** (not a crash).
+- [x] An agent-style caller (test driver) can, against a sample repo snapshot: read a file, write a file, list a dir, check existence, run `pytest` in the sandbox, and get a git diff of its change.
+- [x] `make sandbox-run CMD="python -c 'print(42)'"` prints `42` with exit code 0 (extends the Spec 00 `SCRIPT=` form to accept `CMD=`).
+- [x] A test asserts the sandbox has no host network access (e.g. a command needing the network fails inside the sandbox).
+- [x] `make lint` exits 0.
+- [x] `make test` exits 0 (unit tests mock Docker/subprocess; integration tests that need Docker skip cleanly when Docker is unavailable).
+- [x] No agent-generated code runs on the host (sandbox rule intact).
 
 ## Depends-On
 
 - `specs/00-foundation` — Docker sandbox image (`swe-sandbox:latest`), `scripts/sandbox_exec.py`, Makefile, `block-host-exec` hook.
+
+## Status
+
+Complete.

@@ -13,8 +13,27 @@ build/
 .coverage
 htmlcov/
 
-# Env
+# Env & Secrets
 .env
+.env.local
+.env.*.local
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Claude Code configuration (hide development tool usage)
+.claude/
+
+# Development planning & notes
+planning/
+
+# Build artifacts
+multi_agent_swe_benchmark.egg-info/
 
 # Project-specific (keep directories, ignore contents)
 reports/*
@@ -22,5 +41,6 @@ logs/*
 !reports/.gitkeep
 !logs/.gitkeep
 
-# OS
-.DS_Store
+# MCP & Tool caches
+.mcp.json
+mcp_cache/

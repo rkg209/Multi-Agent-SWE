@@ -493,3 +493,133 @@ trusting the prior record.
 `Makefile`, `specs/01-model-router/spec.md`, `progress_report.md`
 
 ---
+
+## Sequence 08 — Spec 02: Tool Layer (System MCP Servers) + Sandbox
+
+**Date:** 2026-07-16
+**Commit:** (pending)
+**Spec:** `specs/02-tool-layer`
+
+### What
+Implemented the three application-level MCP stdio servers agents use to touch a repo and run code
+(`src/tools/filesystem_server.py`, `src/tools/runcode_server.py`, `src/tools/git_server.py`), the
+hardened per-task Docker sandbox they route through (`src/sandbox/docker_sandbox.py`), a shared
+structured-error/path-scoping module (`src/tools/_errors.py`), a non-root `sandbox` user baked into
+`config/docker/Dockerfile`, `CMD=` support on `make sandbox-run` (via `--cmd` in
+`scripts/sandbox_exec.py`), and a `tests/fixtures/sample_repo/` fixture used by both unit and
+integration tests. This is the layer that makes the sandbox-safety rule in `CLAUDE.md` real at
+runtime — every agent-facing tool call that touches disk or executes code funnels through this code.
+
+### Why
+Specs 04+ (the single-agent baseline and the multi-agent system) need a uniform, safe way for LangGraph
+nodes to read/write files, run tests, and inspect/commit diffs against a task's repo snapshot, without
+ever letting agent-generated code touch the host. Three separate MCP servers (rather than one
+monolithic tool module) keep the responsibilities — and their trust boundaries — cleanly separated:
+filesystem and git operations are fixed, auditable operations on files; run-code is the one surface that
+executes arbitrary agent-generated shell commands, so it alone is required to go through the Docker
+choke-point. Git was kept on the host (rejected alternative: routing `git diff`/`stage`/`commit` through
+the sandbox too) because those are deterministic VCS operations on files, not untrusted-code execution —
+running them in-container would only add latency and complexity for no safety benefit, and host git
+gives simpler, more debuggable commit identity.
+
+### How
+- `docker_sandbox.run()` is the sole function that shells out to `docker run`; `build_docker_command()`
+  is a pure, unit-testable function (mirroring `scripts/sandbox_exec.py`'s existing style) that assembles
+  `--rm --network none --cap-drop ALL --read-only --user sandbox --tmpfs /tmp -v {task_dir}:/workspace:rw
+  -w /workspace --entrypoint sh {image} -lc {cmd}`. The `--entrypoint sh` override was required because
+  the image's default `ENTRYPOINT ["python"]` (from Spec 00) would otherwise try to execute `sh` as a
+  Python script.
+- A container-startup failure (`OSError`, e.g. missing `docker` binary) or a timeout
+  (`subprocess.TimeoutExpired`) both map to a harness-error `SandboxResult(exit_code=-1, timed_out=True)`
+  rather than raising, so callers can't mistake infra failure for a solver FAIL (NFR-16).
+- `src/tools/_errors.py` centralizes two things every server needs: `resolve_within_root()` (realpath +
+  within-root assertion, rejecting `..`/absolute/symlink escapes) and `task_root()` (reads
+  `SANDBOX_TASK_DIR`, set by whatever spawns the stdio server subprocess, since servers can't take
+  constructor args over stdio transport). A `ToolError` exception carries a `code`/`message` and
+  converts to the `{"ok": false, "error": {...}}` shape at the tool boundary; internal bugs still raise.
+- Each server factors its real logic into plain functions taking `(root, ...)` args, unit-tested without
+  MCP transport at all; the `@mcp.tool()`-decorated wrapper is a thin adapter. The `read_file`/
+  `write_file`/`list_dir`/`exists` MCP tool names are set explicitly via `@mcp.tool(name=...)` since the
+  wrapper functions are named `*_tool` to avoid colliding with the pure functions of the same conceptual
+  name.
+- Integration tests spin up all three servers as real stdio subprocesses (`sys.executable -m
+  src.tools.<name>`) using the `mcp` SDK's `stdio_client`/`ClientSession`, run the full read → write →
+  `pytest` → `git diff` loop against a fresh git-initialized copy of `tests/fixtures/sample_repo/`, and
+  assert no network access. Used `anyio`'s pytest plugin (already an `mcp` transitive dependency) instead
+  of adding `pytest-asyncio` as a new dev dependency.
+
+### Issues & Resolutions
+- **Issue:** The image's `ENTRYPOINT ["python"]` from Spec 00 meant `docker run ... swe-sandbox:latest sh
+  -lc {cmd}` actually executed `python sh -lc {cmd}`, failing with "can't open file 'sh'".
+  **Resolution:** Added `--entrypoint sh` to `build_docker_command()`, overriding the image default for
+  the run-code path specifically.
+- **Issue:** `pytest` was not in the sandbox image's `requirements.txt` (only `pyproject.toml`'s dev
+  extras), so `exec("pytest -q")` inside the sandbox failed with "command not found" — this is the one
+  place `tasks.md`/`plan.md`'s "verify the SDK isn't strictly needed inside the container" guidance
+  needed revisiting: the *MCP SDK itself* correctly stays host-only (`pyproject.toml` only, confirmed:
+  the servers run on the host as subprocesses and only proxy execution into the container), but `pytest`
+  is different — the Tester role's whole job is running tests *inside* the sandbox, so it has to be
+  in-container. **Resolution:** Added `pytest>=8.0.0` to `requirements.txt` and rebuilt the image.
+- **Issue:** `/code-review` (medium effort, 3 finder agents across the 8 required angles) surfaced 6
+  confirmed/plausible findings, the most severe being that `make sandbox-run CMD="..."` mounted the
+  *entire project root* read-write into the sandbox (`docker_sandbox.run()`'s `task_dir` mount is always
+  `:rw`, and the new `--cmd` branch in `scripts/sandbox_exec.py` passed `PROJECT_ROOT` as `task_dir`) —
+  a destructive command run via `CMD=` could have deleted or corrupted the host's actual repo/`.git`,
+  unlike the pre-existing `--script` path which always mounts read-only.
+  **Resolution:** `--cmd` now runs against a fresh `tempfile.TemporaryDirectory()` scratch dir instead of
+  `PROJECT_ROOT`, never giving ad-hoc dev commands write access to the real repo. Also fixed from the
+  same pass: `read_file`/`write_file` letting `OSError`/`UnicodeDecodeError` escape as raw exceptions
+  instead of the documented structured-error contract; the `exec()` MCP tool silently dropping the
+  `timeout` parameter that `exec_command()`/`docker_sandbox.run()` already supported; `_task_root()`
+  duplicated verbatim across all three servers instead of living in `_errors.py` (consolidated into
+  `_errors.task_root()`); `git diff` returning ANSI color codes if the host's git config sets
+  `color.ui=always` (added `-c color.ui=never`); and missing `Args`/`Returns` docstring sections on
+  several non-trivial public functions (CLAUDE.md rule 4). Two lower-priority findings were *not*
+  addressed and are recorded here rather than fixed: (1) the pre-existing `--script` path in
+  `scripts/sandbox_exec.py` still uses its own, weaker `build_docker_command()` (no `--cap-drop`,
+  `--read-only`, `--tmpfs`) rather than the new hardened one in `docker_sandbox.py` — unifying them is a
+  bigger refactor than this spec's "keep SCRIPT= working" scope called for, and the existing
+  `hello_sandbox.py` smoke test still passes under the new non-root Dockerfile user; (2) `git_server.py`
+  running `git` on the host outside the sandbox choke-point is a deliberate, documented design decision
+  (see plan), not a bug, though `docker_sandbox.py`'s own docstring claim that "every path... funnels
+  through `run()`" doesn't call out this exception — left as-is since the git server's own docstring
+  already documents it.
+- **Issue:** Repeated instance of the same failure mode: the project's PostToolUse auto-format hook
+  (ruff `--fix` on save) strips an import as "unused" whenever an `Edit` adds `import X` before the call
+  site that uses `X` exists yet (e.g. adding `import tempfile` before the code that calls it, in a
+  separate edit). Hit this ~5 times across `scripts/sandbox_exec.py`, `src/tools/_errors.py`,
+  `src/tools/runcode_server.py`, and `src/tools/git_server.py` during this spec, most seriously when a
+  `sed`-based bulk rename (`_task_root()` → `task_root()`) ran *after* the hook had already stripped the
+  now-referenced `task_root` import, leaving `F821 Undefined name` until caught by `ruff check`.
+  **Resolution:** No code fix needed — this is an editing-order pitfall, not a bug in the shipped code.
+  Re-added each stripped import once its call site existed, and re-ran `ruff check` after any bulk
+  find/replace to catch this class of error before it reaches `make lint`.
+- **Issue:** `tests/fixtures/sample_repo/` per `tasks.md`/`plan.md` was described as "a tiny git repo...
+  committed so `git diff` has a baseline" — but committing a nested `.git` directory into the main repo
+  would create a gitlink/submodule reference rather than tracking the fixture's files normally.
+  **Resolution:** Diverged from the literal plan wording: the fixture directory holds plain files (no
+  `.git`) and both the integration test fixture (`task_repo`) and the ad-hoc verification runs
+  `git init` + a baseline commit against a *copy* of the fixture at test time, which achieves the same
+  "diff has a baseline" property without a nested-repo footgun.
+
+### Verification
+- `docker build -f config/docker/Dockerfile -t swe-sandbox:latest .` → success; `docker run --rm
+  --entrypoint sh swe-sandbox:latest -lc "id -u"` → `1000` (non-root)
+- `make sandbox-run CMD="python -c 'print(42)'"` → `42`, exit 0
+- `make sandbox-run CMD="curl -sS https://example.com"` → `curl: (6) Could not resolve host`, exit 6
+  (no network)
+- `make lint` → 0 (`ruff check` + `black --check`)
+- `make test` → 55 passed, 1 skipped (Ollama-live only) — includes the new Docker-gated integration test
+  running the full read → write → `pytest` → `git diff` loop and the no-network assertion
+- `/code-review` (medium effort) pass run against the staged diff; 6 findings reported, all fixed
+  (see Issues & Resolutions); re-verified `make lint`/`make test` green after fixes
+
+### Files touched
+`src/sandbox/__init__.py`, `src/sandbox/docker_sandbox.py`, `src/tools/__init__.py`,
+`src/tools/_errors.py`, `src/tools/filesystem_server.py`, `src/tools/runcode_server.py`,
+`src/tools/git_server.py`, `config/docker/Dockerfile`, `Makefile`, `scripts/sandbox_exec.py`,
+`pyproject.toml`, `requirements.txt`, `tests/fixtures/sample_repo/calculator.py`,
+`tests/fixtures/sample_repo/test_calculator.py`, `tests/unit/test_tools/*`,
+`tests/integration/test_tools/*`, `progress_report.md`
+
+---
