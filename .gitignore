@@ -44,3 +44,7 @@ logs/*
 # MCP & Tool caches
 .mcp.json
 mcp_cache/
+
+CLAUDE.md
+multi-agent-swe-benchmark.md
+progress_report.md
