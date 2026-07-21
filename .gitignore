@@ -31,7 +31,7 @@ htmlcov/
 
 # Development planning & notes
 planning/
-
+specs/
 # Build artifacts
 multi_agent_swe_benchmark.egg-info/
 
