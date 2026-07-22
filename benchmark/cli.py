@@ -12,18 +12,20 @@ import os
 import sys
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 
 from benchmark.errors import HarnessError
 from benchmark.loader import load_tasks
 from benchmark.results import write_run_record
 from benchmark.scorer import score
-from benchmark.solver import NoopSolver, Solver
+from benchmark.solver import NoopSolver, SingleAgentSolver, Solver
 
 logger = logging.getLogger(__name__)
 
-SOLVERS: dict[str, type[Solver]] = {
+SOLVERS: dict[str, Callable[..., Solver]] = {
     "noop": NoopSolver,
+    "single": SingleAgentSolver,
 }
 
 
@@ -68,7 +70,7 @@ def run(argv: list[str] | None = None) -> int:
         return 1
 
     run_id = uuid.uuid4()
-    solver = solver_cls()
+    solver = solver_cls(run_id=run_id)
     sbcli_output_dir = Path("reports") / "sbcli" / str(run_id)
     rows: list[tuple[str, str, float]] = []
 
@@ -80,6 +82,7 @@ def run(argv: list[str] | None = None) -> int:
         result = score(task, patch, run_id=str(run_id), sbcli_output_dir=sbcli_output_dir)
         duration = time.monotonic() - start
 
+        stats = solver.stats()
         write_run_record(
             run_id=run_id,
             task_id=task.id,
@@ -87,6 +90,9 @@ def run(argv: list[str] | None = None) -> int:
             outcome=result.outcome,
             duration_seconds=duration,
             patch_size_bytes=len(patch.diff.encode("utf-8")),
+            total_cost_usd=stats.cost_usd,
+            total_tokens=stats.total_tokens,
+            iteration_count=stats.iterations,
         )
         rows.append((task.id, result.outcome, duration))
         if result.reason:

@@ -1,0 +1,34 @@
+# Local-only model-router configuration (Spec 04).
+#
+# Same `tiers:` block as `config/litellm_config.yaml`, with every role mapped
+# to the zero-cost local Ollama tier. Use for live single-agent runs:
+#   LITELLM_CONFIG=config/litellm_config.local.yaml make benchmark ...
+#
+# Mapping roles (not setting `tier=` on the request) keeps `agent_role`
+# correct in `trace_events` — see `src/router/router.py:_resolve_agent_role`.
+
+tiers:
+  strong:
+    provider: openrouter
+    model: openrouter/qwen/qwen-2.5-72b-instruct
+    input_price_per_1k: 0.00035
+    output_price_per_1k: 0.0004
+    api_key_env: OPENROUTER_API_KEY
+  small:
+    provider: groq
+    model: groq/llama-3.1-8b-instant
+    input_price_per_1k: 0.00005
+    output_price_per_1k: 0.00008
+    api_key_env: GROQ_API_KEY
+  local:
+    provider: ollama
+    model: ollama/llama3.1
+    input_price_per_1k: 0.0
+    output_price_per_1k: 0.0
+    api_base: ${OLLAMA_BASE_URL}
+
+roles:
+  architect: local
+  reviewer: local
+  developer: local
+  tester: local
