@@ -21,3 +21,15 @@ class GraphState(TypedDict, total=False):
     solver_config: dict[str, object]
     cost_usd: float
     total_tokens: int
+
+    # Spec 06 — multi-agent team (Architect/Tester/Reviewer)
+    plan_files: list[str]
+    plan_constraints: str
+    review_approved: bool
+    review_issues: str
+    test_iteration: int
+    review_iteration: int
+    max_test_iterations: int
+    max_review_iterations: int
+    best_patch: str
+    cap_hit: bool

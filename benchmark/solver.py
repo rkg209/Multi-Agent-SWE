@@ -15,10 +15,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from langgraph.checkpoint.sqlite import SqliteSaver
+
 from benchmark.loader import Task
-from src.graph.graph import DEFAULT_MAX_ITERATIONS, build_graph
+from src.graph.graph import (
+    DEFAULT_MAX_ITERATIONS,
+    DEFAULT_MAX_REVIEW_ITERATIONS,
+    DEFAULT_MAX_TEST_ITERATIONS,
+    build_graph,
+)
 from src.metrics.hallucination import check_patch
 from src.tools.toolbelt import sandbox_task_dir
+
+CHECKPOINT_DIR = Path(".langgraph")
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +50,7 @@ class SolveStats:
     total_tokens: int = 0
     iterations: int = 0
     hallucination_score: float = 0.0
+    cap_hit: bool = False
 
 
 class Solver(Protocol):
@@ -151,6 +161,85 @@ class SingleAgentSolver:
             total_tokens=final_state.get("total_tokens", 0),
             iterations=final_state.get("iteration", 0),
             hallucination_score=hallucination_score,
+        )
+        return Patch(diff=patch_diff)
+
+    def stats(self) -> SolveStats:
+        """Return metrics accumulated by the most recent `solve()` call."""
+        return self._stats
+
+
+class MultiAgentSolver:
+    """Runs the four-agent (Architect/Developer/Tester/Reviewer) LangGraph team against one task."""
+
+    def __init__(self, run_id: uuid.UUID) -> None:
+        self._run_id = run_id
+        self._stats = SolveStats()
+
+    def solve(self, task: Task) -> Patch:
+        """Produce a patch by running the multi-agent graph in a fresh workspace copy.
+
+        Checkpointed to `.langgraph/<run_id>.sqlite` keyed by `thread_id=run_id`
+        so an interrupted run resumes from the last completed node (FR-41).
+        """
+        if task.source != "custom" or task.base_dir is None:
+            logger.warning(
+                "MultiAgentSolver cannot solve %r (source=%r has no local base_dir); "
+                "returning empty patch",
+                task.id,
+                task.source,
+            )
+            self._stats = SolveStats()
+            return Patch(diff="")
+
+        CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
+        checkpoint_path = CHECKPOINT_DIR / f"{self._run_id}.sqlite"
+
+        with tempfile.TemporaryDirectory(prefix=f"solve-{task.id}-") as tmp:
+            workspace = Path(tmp)
+            shutil.copytree(task.base_dir, workspace, dirs_exist_ok=True)
+            init_baseline_repo(workspace)
+
+            initial_state = {
+                "run_id": str(self._run_id),
+                "task_id": task.id,
+                "issue_text": task.issue_text,
+                "workspace": str(workspace),
+                "iteration": 0,
+                "test_iteration": 0,
+                "review_iteration": 0,
+                "max_test_iterations": DEFAULT_MAX_TEST_ITERATIONS,
+                "max_review_iterations": DEFAULT_MAX_REVIEW_ITERATIONS,
+                "solver_config": {"mode": "multi"},
+                "cost_usd": 0.0,
+                "total_tokens": 0,
+            }
+
+            with SqliteSaver.from_conn_string(str(checkpoint_path)) as saver:
+                graph = build_graph({"mode": "multi"}, checkpointer=saver)
+                config = {"configurable": {"thread_id": str(self._run_id)}}
+                with sandbox_task_dir(workspace):
+                    final_state = graph.invoke(initial_state, config=config)
+
+            patch_diff = final_state.get("best_patch") or final_state.get("patch", "")
+            hallucination_score = check_patch(patch_diff, workspace)
+
+        test_iter = final_state.get("test_iteration", 0)
+        review_iter = final_state.get("review_iteration", 0)
+        test_passed = final_state.get("test_passed", False)
+        review_approved = final_state.get("review_approved", False)
+        cap_hit = (not test_passed and test_iter >= final_state.get("max_test_iterations", 0)) or (
+            test_passed
+            and not review_approved
+            and review_iter >= final_state.get("max_review_iterations", 0)
+        )
+
+        self._stats = SolveStats(
+            cost_usd=final_state.get("cost_usd", 0.0),
+            total_tokens=final_state.get("total_tokens", 0),
+            iterations=final_state.get("iteration", 0),
+            hallucination_score=hallucination_score,
+            cap_hit=cap_hit,
         )
         return Patch(diff=patch_diff)
 

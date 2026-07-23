@@ -156,6 +156,49 @@ def test_developer_node_calls_router_with_role_and_turn_index(tmp_path: Path) ->
     assert new_state["patch"] == "diff --git a/calculator.py ..."
 
 
+def test_build_messages_includes_plan_and_review_issues() -> None:
+    state: GraphState = {
+        "issue_text": "add is missing",
+        "iteration": 0,
+        "plan": "Add the add function.",
+        "plan_constraints": "Keep API stable.",
+        "review_issues": "Missing type hints.",
+    }
+    messages = developer.build_messages("repo context", state)
+    user_content = messages[1]["content"]
+    assert "Add the add function." in user_content
+    assert "Keep API stable." in user_content
+    assert "Missing type hints." in user_content
+
+
+def test_developer_node_multi_mode_skips_self_test(tmp_path: Path) -> None:
+    (tmp_path / "calculator.py").write_text("def subtract(a, b): return a - b\n")
+    state: GraphState = {
+        "run_id": str(uuid.uuid4()),
+        "task_id": "custom-001-calc-add",
+        "issue_text": "add is missing",
+        "workspace": str(tmp_path),
+        "iteration": 0,
+        "solver_config": {"mode": "multi"},
+    }
+    fake_response = LLMResponse(
+        content="```path=calculator.py\ndef add(a, b):\n    return a + b\n```",
+        model="ollama/llama3.1",
+        provider="ollama",
+        prompt_tokens=1,
+        completion_tokens=1,
+        cost_usd=0.0,
+    )
+    with patch.object(developer, "complete", return_value=fake_response):
+        with patch.object(ToolBelt, "exec") as mock_exec:
+            with patch.object(ToolBelt, "diff", return_value="diff --git a/calculator.py ..."):
+                new_state = developer.developer_node(state)
+
+    mock_exec.assert_not_called()
+    assert "test_passed" not in new_state
+    assert new_state["patch"] == "diff --git a/calculator.py ..."
+
+
 def test_developer_node_writes_only_through_belt(tmp_path: Path) -> None:
     (tmp_path / "calculator.py").write_text("def subtract(a, b): return a - b\n")
     state: GraphState = {

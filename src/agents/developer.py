@@ -63,14 +63,28 @@ def build_context(belt: ToolBelt, state: GraphState) -> str:
 
 
 def build_messages(context: str, state: GraphState) -> list[dict[str, str]]:
-    """Build chat messages: system prompt pinning the output contract, user = issue + context."""
+    """Build chat messages: system prompt pinning the output contract, user = issue + context.
+
+    In `multi` mode also includes the Architect's plan/constraints and the
+    latest Tester/Reviewer feedback, so the Developer consumes the rest of
+    the team's output (FR-36).
+    """
     user_parts = [
         f"Issue:\n{state.get('issue_text', '')}",
         f"Repository contents:\n{context}",
     ]
+    plan = state.get("plan")
+    if plan:
+        user_parts.append(f"Architect's plan:\n{plan}")
+    plan_constraints = state.get("plan_constraints")
+    if plan_constraints:
+        user_parts.append(f"Constraints from the Architect:\n{plan_constraints}")
     previous_stdout = state.get("test_stdout")
     if state.get("iteration", 0) > 0 and previous_stdout:
         user_parts.append(f"The previous attempt's test run failed:\n{previous_stdout}")
+    review_issues = state.get("review_issues")
+    if review_issues:
+        user_parts.append(f"The reviewer requested these changes:\n{review_issues}")
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": "\n\n".join(user_parts)},
@@ -145,19 +159,24 @@ def developer_node(state: GraphState) -> GraphState:
             except ToolError as exc:
                 logger.warning("Could not write %r: %s", path, exc.message)
 
-        try:
-            exec_result = belt.exec("pytest -q")
-            test_stdout = exec_result.stdout + exec_result.stderr
-            test_passed = exec_result.exit_code == 0
-        except ToolError as exc:
-            test_stdout = exc.message
-            test_passed = False
+        is_multi = state.get("solver_config", {}).get("mode") == "multi"
+        test_stdout = state.get("test_stdout", "")
+        test_passed = state.get("test_passed", False)
+        if not is_multi:
+            try:
+                exec_result = belt.exec("pytest -q")
+                test_stdout = exec_result.stdout + exec_result.stderr
+                test_passed = exec_result.exit_code == 0
+            except ToolError as exc:
+                test_stdout = exc.message
+                test_passed = False
 
         patch = belt.diff()
 
     new_state = cast("GraphState", dict(state))
-    new_state["test_stdout"] = test_stdout
-    new_state["test_passed"] = test_passed
+    if not is_multi:
+        new_state["test_stdout"] = test_stdout
+        new_state["test_passed"] = test_passed
     new_state["patch"] = patch
     new_state["cost_usd"] = state.get("cost_usd", 0.0) + response.cost_usd
     new_state["total_tokens"] = (

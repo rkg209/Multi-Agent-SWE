@@ -19,7 +19,7 @@ from benchmark.errors import HarnessError
 from benchmark.loader import load_tasks
 from benchmark.results import write_run_record
 from benchmark.scorer import score
-from benchmark.solver import NoopSolver, SingleAgentSolver, Solver
+from benchmark.solver import MultiAgentSolver, NoopSolver, SingleAgentSolver, Solver
 from src.metrics.aggregate import percentile
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 SOLVERS: dict[str, Callable[..., Solver]] = {
     "noop": NoopSolver,
     "single": SingleAgentSolver,
+    "multi": MultiAgentSolver,
 }
 
 
@@ -95,6 +96,7 @@ def run(argv: list[str] | None = None) -> int:
             total_tokens=stats.total_tokens,
             iteration_count=stats.iterations,
             hallucination_score=stats.hallucination_score,
+            cap_hit=stats.cap_hit,
         )
         rows.append((task.id, result.outcome, duration))
         if result.reason:
