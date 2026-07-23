@@ -20,6 +20,7 @@ from benchmark.loader import load_tasks
 from benchmark.results import write_run_record
 from benchmark.scorer import score
 from benchmark.solver import NoopSolver, SingleAgentSolver, Solver
+from src.metrics.aggregate import percentile
 
 logger = logging.getLogger(__name__)
 
@@ -93,12 +94,17 @@ def run(argv: list[str] | None = None) -> int:
             total_cost_usd=stats.cost_usd,
             total_tokens=stats.total_tokens,
             iteration_count=stats.iterations,
+            hallucination_score=stats.hallucination_score,
         )
         rows.append((task.id, result.outcome, duration))
         if result.reason:
             logger.info("%s -> %s (%s)", task.id, result.outcome, result.reason)
 
     _print_summary(rows)
+    durations = [duration for _, _, duration in rows]
+    p50 = percentile(durations, 0.5)
+    p99 = percentile(durations, 0.99)
+    print(f"p50_duration_s={p50:.3f} p99_duration_s={p99:.3f}")
     return 0
 
 

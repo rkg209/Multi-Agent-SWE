@@ -3,14 +3,24 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 
 from src.agents import developer
 from src.graph.state import GraphState
 from src.router.router import LLMResponse
 from src.sandbox.docker_sandbox import SandboxResult
 from src.tools.toolbelt import ToolBelt
+
+
+@pytest.fixture(autouse=True)
+def _no_real_trace_writes() -> Iterator[None]:
+    """`developer_node` now records an `agent_turn` trace row; keep these tests DB-free."""
+    with patch("src.metrics.turn_tracer.record_agent_turn"):
+        yield
 
 
 def test_parse_file_blocks_well_formed() -> None:

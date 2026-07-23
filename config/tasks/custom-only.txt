@@ -1,0 +1,4 @@
+# Empty SWE-bench subset — loads zero SWE-bench instances, so `make benchmark`
+# runs only the in-repo custom tickets (benchmark/tasks/custom/). Useful for
+# fast, low-memory manual smoke tests that don't need sb-cli to fetch/build
+# real GitHub repos.

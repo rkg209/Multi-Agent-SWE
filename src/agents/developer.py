@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import cast
 
 from src.graph.state import GraphState
+from src.metrics.turn_tracer import RecordingToolBelt, trace_turn
 from src.router.router import LLMRequest, complete
 from src.tools.toolbelt import ToolBelt, ToolError
 
@@ -108,45 +109,56 @@ def _normalize_path(path: str, known_entries: set[str]) -> str:
 def developer_node(state: GraphState) -> GraphState:
     """Read the repo, get file rewrites from the model, write them, run tests, update state."""
     root = Path(state["workspace"])
-    belt = ToolBelt(root)
+    run_id = uuid.UUID(state["run_id"])
     iteration = state.get("iteration", 0)
 
-    known_entries = {e for e in belt.list_dir(".") if e not in SKIP_ENTRIES}
-    context = build_context(belt, state)
-    messages = build_messages(context, state)
-    response = complete(
-        LLMRequest(
-            messages=messages,
-            role="developer",
-            run_id=uuid.UUID(state["run_id"]),
-            task_id=state["task_id"],
-            turn_index=iteration,
-            temperature=0.0,
+    with trace_turn(
+        run_id=run_id, task_id=state["task_id"], agent_role="developer", turn_index=iteration
+    ) as recorder:
+        belt = RecordingToolBelt(ToolBelt(root), recorder)
+
+        known_entries = {e for e in belt.list_dir(".") if e not in SKIP_ENTRIES}
+        context = build_context(belt, state)
+        messages = build_messages(context, state)
+        response = complete(
+            LLMRequest(
+                messages=messages,
+                role="developer",
+                run_id=run_id,
+                task_id=state["task_id"],
+                turn_index=iteration,
+                temperature=0.0,
+            )
         )
-    )
+        recorder.model = response.model
+        recorder.prompt_tokens = response.prompt_tokens
+        recorder.completion_tokens = response.completion_tokens
+        recorder.cost_usd = response.cost_usd
 
-    blocks = parse_file_blocks(response.content)
-    if not blocks:
-        logger.warning("Developer reply for %s contained no file blocks", state["task_id"])
-    for raw_path, file_content in blocks.items():
-        path = _normalize_path(raw_path, known_entries)
+        blocks = parse_file_blocks(response.content)
+        if not blocks:
+            logger.warning("Developer reply for %s contained no file blocks", state["task_id"])
+        for raw_path, file_content in blocks.items():
+            path = _normalize_path(raw_path, known_entries)
+            try:
+                belt.write_file(path, file_content)
+            except ToolError as exc:
+                logger.warning("Could not write %r: %s", path, exc.message)
+
         try:
-            belt.write_file(path, file_content)
+            exec_result = belt.exec("pytest -q")
+            test_stdout = exec_result.stdout + exec_result.stderr
+            test_passed = exec_result.exit_code == 0
         except ToolError as exc:
-            logger.warning("Could not write %r: %s", path, exc.message)
+            test_stdout = exc.message
+            test_passed = False
 
-    try:
-        exec_result = belt.exec("pytest -q")
-        test_stdout = exec_result.stdout + exec_result.stderr
-        test_passed = exec_result.exit_code == 0
-    except ToolError as exc:
-        test_stdout = exc.message
-        test_passed = False
+        patch = belt.diff()
 
     new_state = cast("GraphState", dict(state))
     new_state["test_stdout"] = test_stdout
     new_state["test_passed"] = test_passed
-    new_state["patch"] = belt.diff()
+    new_state["patch"] = patch
     new_state["cost_usd"] = state.get("cost_usd", 0.0) + response.cost_usd
     new_state["total_tokens"] = (
         state.get("total_tokens", 0) + response.prompt_tokens + response.completion_tokens

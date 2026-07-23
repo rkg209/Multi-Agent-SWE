@@ -17,6 +17,7 @@ from typing import Protocol
 
 from benchmark.loader import Task
 from src.graph.graph import DEFAULT_MAX_ITERATIONS, build_graph
+from src.metrics.hallucination import check_patch
 from src.tools.toolbelt import sandbox_task_dir
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ class SolveStats:
     cost_usd: float = 0.0
     total_tokens: int = 0
     iterations: int = 0
+    hallucination_score: float = 0.0
 
 
 class Solver(Protocol):
@@ -141,12 +143,16 @@ class SingleAgentSolver:
             with sandbox_task_dir(workspace):
                 final_state = graph.invoke(initial_state)
 
+            patch_diff = final_state.get("patch", "")
+            hallucination_score = check_patch(patch_diff, workspace)
+
         self._stats = SolveStats(
             cost_usd=final_state.get("cost_usd", 0.0),
             total_tokens=final_state.get("total_tokens", 0),
             iterations=final_state.get("iteration", 0),
+            hallucination_score=hallucination_score,
         )
-        return Patch(diff=final_state.get("patch", ""))
+        return Patch(diff=patch_diff)
 
     def stats(self) -> SolveStats:
         """Return metrics accumulated by the most recent `solve()` call."""
