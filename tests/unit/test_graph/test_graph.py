@@ -141,6 +141,27 @@ def test_multi_mode_drives_dev_test_loop_to_cap_and_derives_cap_hit() -> None:
     assert cap_hit is True
 
 
+def test_should_continue_ends_when_budget_exceeded_even_under_iteration_cap() -> None:
+    state = {"total_tokens": 200_000, "token_budget": 100_000, "iteration": 0, "max_iterations": 3}
+    assert graph_module._should_continue(state) == graph_module.END
+
+
+def test_after_tester_ends_when_budget_exceeded_even_on_pass() -> None:
+    state = {"total_tokens": 200_000, "token_budget": 100_000, "test_passed": True}
+    assert graph_module._after_tester(state) == graph_module.END
+
+
+def test_after_reviewer_ends_when_budget_exceeded_even_under_cap() -> None:
+    state = {
+        "total_tokens": 200_000,
+        "token_budget": 100_000,
+        "review_approved": False,
+        "review_iteration": 0,
+        "max_review_iterations": 2,
+    }
+    assert graph_module._after_reviewer(state) == graph_module.END
+
+
 def test_multi_mode_drives_dev_review_loop_to_cap_and_derives_cap_hit() -> None:
     calls = {"developer": 0, "tester": 0, "reviewer": 0}
 

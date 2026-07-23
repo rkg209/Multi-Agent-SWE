@@ -42,3 +42,19 @@ def test_read_file_rejects_escape(tmp_path: Path) -> None:
     with pytest.raises(ToolError) as exc_info:
         filesystem_server.read_file(tmp_path, "../escape.txt")
     assert exc_info.value.code == "path_escape"
+
+
+def test_write_file_denies_git_path(tmp_path: Path) -> None:
+    """FR-45/FR-46: the allow-list denies writes into `.git/`, before anything touches disk."""
+    with pytest.raises(ToolError) as exc_info:
+        filesystem_server.write_file(tmp_path, ".git/config", "malicious")
+    assert exc_info.value.code == "denied"
+    assert not (tmp_path / ".git").exists()
+
+
+def test_write_file_denies_hidden_test(tmp_path: Path) -> None:
+    """FR-45/FR-46: the allow-list denies overwriting the hidden scorer fixture."""
+    with pytest.raises(ToolError) as exc_info:
+        filesystem_server.write_file(tmp_path, "hidden_test.py", "cheat")
+    assert exc_info.value.code == "denied"
+    assert not (tmp_path / "hidden_test.py").exists()

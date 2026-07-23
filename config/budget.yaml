@@ -1,0 +1,6 @@
+# Spec 07 — per-task token budget cap (NFR-11).
+#
+# 100_000 tokens at the `strong` tier (config/litellm_config.yaml,
+# $0.00035/$0.0004 per 1k) costs ~$0.0375/task, keeping a 50-task run
+# comfortably under the ~$5 target.
+token_cap_per_task: 100000

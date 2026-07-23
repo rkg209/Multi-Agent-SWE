@@ -43,6 +43,8 @@ def test_resolves_role_to_configured_model() -> None:
     with (
         patch("src.router.router.litellm.completion", return_value=_fake_litellm_response(10, 5)),
         patch("src.router.router.record_llm_call"),
+        patch("src.router.router.get_cached_response", return_value=None),
+        patch("src.router.router.store_response"),
     ):
         response = complete(
             LLMRequest(messages=[{"role": "user", "content": "hi"}], role="developer"),
@@ -56,6 +58,8 @@ def test_resolves_explicit_tier_to_configured_model() -> None:
     with (
         patch("src.router.router.litellm.completion", return_value=_fake_litellm_response(10, 5)),
         patch("src.router.router.record_llm_call"),
+        patch("src.router.router.get_cached_response", return_value=None),
+        patch("src.router.router.store_response"),
     ):
         response = complete(
             LLMRequest(messages=[{"role": "user", "content": "hi"}], tier="strong"),
@@ -71,6 +75,8 @@ def test_cost_computed_from_config_prices() -> None:
             return_value=_fake_litellm_response(1000, 500),
         ),
         patch("src.router.router.record_llm_call"),
+        patch("src.router.router.get_cached_response", return_value=None),
+        patch("src.router.router.store_response"),
     ):
         response = complete(
             LLMRequest(messages=[{"role": "user", "content": "hi"}], role="architect"),
@@ -93,6 +99,8 @@ def test_trace_written_before_response_returned() -> None:
     with (
         patch("src.router.router.litellm.completion", side_effect=fake_completion),
         patch("src.router.router.record_llm_call", side_effect=fake_record_llm_call),
+        patch("src.router.router.get_cached_response", return_value=None),
+        patch("src.router.router.store_response"),
     ):
         complete(
             LLMRequest(messages=[{"role": "user", "content": "hi"}], role="developer"),
@@ -123,6 +131,8 @@ def test_empty_choices_still_writes_trace() -> None:
     with (
         patch("src.router.router.litellm.completion", return_value=empty_response),
         patch("src.router.router.record_llm_call") as mock_record,
+        patch("src.router.router.get_cached_response", return_value=None),
+        patch("src.router.router.store_response"),
     ):
         response = complete(
             LLMRequest(messages=[{"role": "user", "content": "hi"}], role="developer"),
@@ -139,6 +149,65 @@ def test_empty_string_role_does_not_silently_fall_back_to_tier() -> None:
             LLMRequest(messages=[{"role": "user", "content": "hi"}], role="", tier="strong"),
             config=TEST_CONFIG,
         )
+
+
+def test_cache_hit_skips_litellm_and_returns_zero_cost() -> None:
+    """FR-44: a cache hit must not call LiteLLM and must report `cache_hit=True`, cost 0."""
+    from src.router.cache import CachedEntry
+
+    with (
+        patch("src.router.router.litellm.completion") as mock_completion,
+        patch("src.router.router.record_llm_call") as mock_record,
+        patch(
+            "src.router.router.get_cached_response",
+            return_value=CachedEntry(content="cached!", prompt_tokens=10, completion_tokens=5),
+        ),
+        patch("src.router.router.store_response") as mock_store,
+    ):
+        response = complete(
+            LLMRequest(messages=[{"role": "user", "content": "hi"}], role="developer"),
+            config=TEST_CONFIG,
+        )
+
+    assert response.content == "cached!"
+    assert response.cache_hit is True
+    assert response.cost_usd == 0.0
+    mock_completion.assert_not_called()
+    mock_store.assert_not_called()
+    mock_record.assert_called_once()
+    assert mock_record.call_args.kwargs["cache_hit"] is True
+    assert mock_record.call_args.kwargs["cost_usd"] == 0.0
+
+
+def test_cache_miss_then_stores_response() -> None:
+    """FR-44: on a miss, the router calls LiteLLM as usual and stores the result."""
+    with (
+        patch("src.router.router.litellm.completion", return_value=_fake_litellm_response(10, 5)),
+        patch("src.router.router.record_llm_call"),
+        patch("src.router.router.get_cached_response", return_value=None),
+        patch("src.router.router.store_response") as mock_store,
+    ):
+        response = complete(
+            LLMRequest(messages=[{"role": "user", "content": "hi"}], role="developer"),
+            config=TEST_CONFIG,
+        )
+
+    assert response.cache_hit is False
+    mock_store.assert_called_once()
+
+
+def test_distinct_prompts_yield_distinct_cache_keys() -> None:
+    """Distinct `(model, messages)` pairs must never collide on the same cache key."""
+    from src.router.cache import build_cache_key
+
+    key_a = build_cache_key("groq/llama-3.1-8b-instant", [{"role": "user", "content": "hi"}])
+    key_b = build_cache_key("groq/llama-3.1-8b-instant", [{"role": "user", "content": "bye"}])
+    key_c = build_cache_key(
+        "openrouter/qwen/qwen-2.5-72b-instruct", [{"role": "user", "content": "hi"}]
+    )
+
+    assert len({key_a, key_b, key_c}) == 3
+    assert all(len(key) == 64 for key in (key_a, key_b, key_c))
 
 
 def test_no_direct_provider_sdk_imports() -> None:

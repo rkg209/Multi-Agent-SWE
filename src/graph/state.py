@@ -33,3 +33,7 @@ class GraphState(TypedDict, total=False):
     max_review_iterations: int
     best_patch: str
     cap_hit: bool
+
+    # Spec 07 — guardrails & cost control
+    token_budget: int
+    budget_exceeded: bool

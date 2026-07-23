@@ -14,6 +14,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from src.guardrails.allowlist import check_exec, load_allowlist_config
 from src.sandbox.docker_sandbox import run as run_in_sandbox
 from src.tools._errors import ToolError, resolve_within_root, task_root
 
@@ -38,6 +39,9 @@ def exec_command(command: str, working_dir: str = ".", timeout: int = 120) -> di
     try:
         root = task_root()
         resolved_dir = resolve_within_root(root, working_dir)
+        decision = check_exec(command, load_allowlist_config())
+        if not decision.allowed:
+            raise ToolError(decision.code, decision.message)
     except ToolError as exc:
         return exc.to_dict()
 

@@ -13,14 +13,24 @@ from src.agents.developer import developer_node
 from src.agents.reviewer import reviewer_node
 from src.agents.tester import tester_node
 from src.graph.state import GraphState
+from src.guardrails.budget import DEFAULT_TOKEN_BUDGET, is_budget_exceeded
 
 DEFAULT_MAX_ITERATIONS = 3
 DEFAULT_MAX_TEST_ITERATIONS = 3
 DEFAULT_MAX_REVIEW_ITERATIONS = 2
 
 
+def _budget_ok(state: GraphState) -> bool:
+    """Return whether the run is still under its per-task token budget (FR-43)."""
+    return not is_budget_exceeded(
+        state.get("total_tokens", 0), state.get("token_budget", DEFAULT_TOKEN_BUDGET)
+    )
+
+
 def _should_continue(state: GraphState) -> str:
-    """Loop back to `developer` unless tests passed or the iteration cap is hit."""
+    """Loop back to `developer` unless tests passed, the budget is exhausted, or the cap is hit."""
+    if not _budget_ok(state):
+        return END
     if state.get("test_passed"):
         return END
     if state.get("iteration", 0) >= state.get("max_iterations", DEFAULT_MAX_ITERATIONS):
@@ -30,6 +40,8 @@ def _should_continue(state: GraphState) -> str:
 
 def _after_tester(state: GraphState) -> str:
     """Route to `reviewer` on PASS, back to `developer` on FAIL under cap, else `END`."""
+    if not _budget_ok(state):
+        return END
     if state.get("test_passed"):
         return "reviewer"
     if state.get("test_iteration", 0) >= state.get(
@@ -41,6 +53,8 @@ def _after_tester(state: GraphState) -> str:
 
 def _after_reviewer(state: GraphState) -> str:
     """Route to `END` on approval, back to `developer` on issues under cap, else `END`."""
+    if not _budget_ok(state):
+        return END
     if state.get("review_approved"):
         return END
     if state.get("review_iteration", 0) >= state.get(

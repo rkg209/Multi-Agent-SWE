@@ -24,6 +24,7 @@ from src.graph.graph import (
     DEFAULT_MAX_TEST_ITERATIONS,
     build_graph,
 )
+from src.guardrails.budget import is_budget_exceeded, load_budget_config
 from src.metrics.hallucination import check_patch
 from src.tools.toolbelt import sandbox_task_dir
 
@@ -51,6 +52,7 @@ class SolveStats:
     iterations: int = 0
     hallucination_score: float = 0.0
     cap_hit: bool = False
+    budget_exceeded: bool = False
 
 
 class Solver(Protocol):
@@ -147,6 +149,7 @@ class SingleAgentSolver:
                 "solver_config": {"mode": "single"},
                 "cost_usd": 0.0,
                 "total_tokens": 0,
+                "token_budget": load_budget_config().token_cap_per_task,
             }
 
             graph = build_graph({"mode": "single"})
@@ -156,11 +159,15 @@ class SingleAgentSolver:
             patch_diff = final_state.get("patch", "")
             hallucination_score = check_patch(patch_diff, workspace)
 
+        budget_exceeded = is_budget_exceeded(
+            final_state.get("total_tokens", 0), final_state.get("token_budget", 0)
+        )
         self._stats = SolveStats(
             cost_usd=final_state.get("cost_usd", 0.0),
             total_tokens=final_state.get("total_tokens", 0),
             iterations=final_state.get("iteration", 0),
             hallucination_score=hallucination_score,
+            budget_exceeded=budget_exceeded,
         )
         return Patch(diff=patch_diff)
 
@@ -213,6 +220,7 @@ class MultiAgentSolver:
                 "solver_config": {"mode": "multi"},
                 "cost_usd": 0.0,
                 "total_tokens": 0,
+                "token_budget": load_budget_config().token_cap_per_task,
             }
 
             with SqliteSaver.from_conn_string(str(checkpoint_path)) as saver:
@@ -233,6 +241,9 @@ class MultiAgentSolver:
             and not review_approved
             and review_iter >= final_state.get("max_review_iterations", 0)
         )
+        budget_exceeded = is_budget_exceeded(
+            final_state.get("total_tokens", 0), final_state.get("token_budget", 0)
+        )
 
         self._stats = SolveStats(
             cost_usd=final_state.get("cost_usd", 0.0),
@@ -240,6 +251,7 @@ class MultiAgentSolver:
             iterations=final_state.get("iteration", 0),
             hallucination_score=hallucination_score,
             cap_hit=cap_hit,
+            budget_exceeded=budget_exceeded,
         )
         return Patch(diff=patch_diff)
 

@@ -13,3 +13,7 @@ from __future__ import annotations
 
 class RouterError(Exception):
     """Raised for any router failure: config errors, LLM call failures, or trace-write failures."""
+
+
+class GuardrailError(Exception):
+    """Raised for a guardrail configuration failure (Spec 07): malformed or missing config."""

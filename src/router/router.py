@@ -11,6 +11,7 @@ import litellm
 
 from src.errors import RouterError
 from src.metrics.trace_store import record_llm_call
+from src.router.cache import build_cache_key, get_cached_response, store_response
 from src.router.config import RouterConfig, load_router_config
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,31 @@ def complete(request: LLMRequest, config: RouterConfig | None = None) -> LLMResp
     role_or_tier = request.role if request.role is not None else request.tier
     model_spec = config.resolve(role_or_tier)
 
+    cache_key = build_cache_key(model_spec.model, request.messages)
+    cached = get_cached_response(cache_key)
+    if cached is not None:
+        record_llm_call(
+            run_id=request.run_id,
+            task_id=request.task_id,
+            agent_role=_resolve_agent_role(request),
+            provider=model_spec.provider,
+            model=model_spec.model,
+            prompt_tokens=cached.prompt_tokens,
+            completion_tokens=cached.completion_tokens,
+            cost_usd=0.0,
+            cache_hit=True,
+            turn_index=request.turn_index,
+        )
+        return LLMResponse(
+            content=cached.content,
+            model=model_spec.model,
+            provider=model_spec.provider,
+            prompt_tokens=cached.prompt_tokens,
+            completion_tokens=cached.completion_tokens,
+            cost_usd=0.0,
+            cache_hit=True,
+        )
+
     completion_kwargs: dict[str, object] = {
         "model": model_spec.model,
         "messages": request.messages,
@@ -138,6 +164,8 @@ def complete(request: LLMRequest, config: RouterConfig | None = None) -> LLMResp
         model_spec.output_price_per_1k,
     )
     content = _extract_content(response)
+
+    store_response(cache_key, model_spec.model, content, prompt_tokens, completion_tokens, cost_usd)
 
     record_llm_call(
         run_id=request.run_id,

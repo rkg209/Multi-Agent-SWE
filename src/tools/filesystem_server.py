@@ -13,6 +13,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
+from src.guardrails.allowlist import check_write, load_allowlist_config
 from src.tools._errors import ToolError, resolve_within_root, task_root
 
 logger = logging.getLogger(__name__)
@@ -32,8 +33,15 @@ def read_file(root: Path, rel_path: str) -> str:
 
 
 def write_file(root: Path, rel_path: str, content: str) -> None:
-    """Write `content` to `rel_path`, scoped to `root`, creating parent dirs as needed."""
+    """Write `content` to `rel_path`, scoped to `root`, creating parent dirs as needed.
+
+    Denied by `check_write` (Spec 07 allow-list, FR-45/FR-46) raises a
+    `ToolError` before anything touches disk.
+    """
     resolved = resolve_within_root(root, rel_path)
+    decision = check_write(rel_path, load_allowlist_config())
+    if not decision.allowed:
+        raise ToolError(decision.code, decision.message)
     try:
         resolved.parent.mkdir(parents=True, exist_ok=True)
         resolved.write_text(content)

@@ -1,0 +1,26 @@
+# Spec 07 — single authoritative allow-list for tool-layer actions (NFR-4).
+#
+# Checked by src/guardrails/allowlist.py inside filesystem_server.write_file /
+# runcode_server.exec_command — never inside agent prompts. This is the only
+# file that defines what a Developer/Tester agent may write or execute.
+
+write:
+  denied_path_patterns:
+    - ".git/**"
+    - "hidden_test.py"
+
+exec:
+  allowed_command_prefixes:
+    - "pytest"
+    - "python"
+    - "python3"
+    - "pip"
+    - "git"
+    - "ls"
+    - "cat"
+  denied_substrings:
+    - "rm -rf"
+    - "curl "
+    - "wget "
+    - "sudo "
+    - ":(){ :|:& };:"

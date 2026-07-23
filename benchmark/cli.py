@@ -97,6 +97,7 @@ def run(argv: list[str] | None = None) -> int:
             iteration_count=stats.iterations,
             hallucination_score=stats.hallucination_score,
             cap_hit=stats.cap_hit,
+            budget_exceeded=stats.budget_exceeded,
         )
         rows.append((task.id, result.outcome, duration))
         if result.reason:
