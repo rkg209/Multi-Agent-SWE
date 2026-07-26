@@ -19,6 +19,8 @@ dependencies = [
     "mcp>=1.0.0",
     "sb-cli>=0.1.0,<0.2.0",
     "langgraph-checkpoint-sqlite>=2.0.0",
+    "pandas>=2.2",
+    "altair>=5.0",
 ]
 
 [project.optional-dependencies]

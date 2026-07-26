@@ -25,8 +25,8 @@ setup: check-docker check-python
 	@echo "Setup complete."
 
 lint:
-	$(VENV)/bin/ruff check src/ benchmark/ tests/
-	$(VENV)/bin/black --check src/ benchmark/ tests/
+	$(VENV)/bin/ruff check src/ benchmark/ dashboard/ tests/
+	$(VENV)/bin/black --check src/ benchmark/ dashboard/ tests/
 
 test:
 	$(VENV)/bin/pytest tests/unit/ tests/integration/ -q
