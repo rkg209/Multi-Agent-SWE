@@ -103,4 +103,11 @@ def test_multi_agent_benchmark_writes_run_record_and_per_agent_traces() -> None:
     assert len(rows) == 7  # 5 SWE-bench + 2 custom
 
     traced_roles = {role for role, _ in _fetch_trace_roles_and_models(run_id)}
-    assert {"architect", "developer", "tester", "reviewer"} <= traced_roles
+    # `reviewer` is deliberately not asserted here: `_after_tester` only routes to it when
+    # `test_passed` is True, and `test_passed` comes from whatever tests the Developer wrote or
+    # found in the workspace, not the hidden test (src/agents/developer.py:7-8 — the hidden test
+    # is only copied in at score time). Whether the Developer writes a self-verifying test on a
+    # given task/model/run is real model behavior, not something this harness or this test
+    # controls, so it isn't guaranteed on every run. architect/developer/tester are: every task
+    # that reaches the graph runs at least one full loop.
+    assert {"architect", "developer", "tester"} <= traced_roles
