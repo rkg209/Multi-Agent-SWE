@@ -20,9 +20,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.sandbox.docker_sandbox import run as run_in_sandbox  # noqa: E402
+from src.sandbox.image import SANDBOX_IMAGE  # noqa: E402
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-SANDBOX_IMAGE = "swe-sandbox:latest"
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:

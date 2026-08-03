@@ -7,7 +7,13 @@ from unittest.mock import MagicMock, patch
 import psycopg2
 import pytest
 
-from dashboard.data import HEADLINE_COLUMNS, DashboardError, _query, fetch_latest_headline
+from dashboard.data import (
+    HEADLINE_COLUMNS,
+    DashboardError,
+    _query,
+    fetch_latest_headline,
+    fetch_latest_totals,
+)
 
 
 def _mock_conn(columns: list[str], rows: list[tuple[object, ...]]) -> MagicMock:
@@ -68,3 +74,20 @@ def test_fetch_latest_headline_issues_distinct_on_query(monkeypatch: pytest.Monk
     executed_sql = mock_conn.cursor.return_value.execute.call_args.args[0]
     assert "DISTINCT ON (h.solver)" in executed_sql
     assert "benchmark.headline_metrics" in executed_sql
+
+
+def test_fetch_latest_totals_issues_distinct_on_run_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DATABASE_URL", "postgresql://fake")
+    mock_conn = _mock_conn(
+        ["solver", "run_id", "total_cost_usd", "total_tokens", "run_finished_at"], []
+    )
+
+    with patch("dashboard.data.psycopg2.connect", return_value=mock_conn) as mock_connect:
+        fetch_latest_totals()
+
+    mock_connect.assert_called_once()
+    executed_sql = mock_conn.cursor.return_value.execute.call_args.args[0]
+    assert "DISTINCT ON (solver)" in executed_sql
+    assert "benchmark.run_summary" in executed_sql

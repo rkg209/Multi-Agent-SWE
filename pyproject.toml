@@ -9,27 +9,28 @@ description = "Benchmarks single-agent vs. multi-agent LLM performance on SWE-be
 requires-python = ">=3.11"
 authors = [{ name = "Rahul" }]
 dependencies = [
-    "langgraph>=0.2.0",
-    "litellm>=1.40.0",
-    "psycopg2-binary>=2.9.9",
-    "streamlit>=1.35.0",
-    "python-dotenv>=1.0.0",
-    "docker>=7.0.0",
-    "pyyaml>=6.0",
-    "mcp>=1.0.0",
-    "sb-cli>=0.1.0,<0.2.0",
-    "langgraph-checkpoint-sqlite>=2.0.0",
-    "pandas>=2.2",
-    "altair>=5.0",
+    "langgraph==1.2.7",
+    "litellm==1.90.2",
+    "psycopg2-binary==2.9.12",
+    "streamlit==1.58.0",
+    "python-dotenv==1.2.2",
+    "docker==7.1.0",
+    "pyyaml==6.0.3",
+    "mcp==1.28.1",
+    "sb-cli==0.1.5",
+    "langgraph-checkpoint-sqlite==3.1.0",
+    "pandas==3.0.3",
+    "altair==6.2.2",
+    "tabulate==0.10.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
-    "pytest-cov>=5.0.0",
-    "ruff>=0.4.0",
-    "black>=24.0.0",
-    "mypy>=1.10.0",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.15.20",
+    "black==26.5.1",
+    "mypy==2.1.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -52,4 +53,7 @@ target-version = ["py311"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
-markers = ["integration: requires Docker/Postgres"]
+markers = [
+    "integration: requires Docker/Postgres",
+    "anyio: async tests run under the anyio pytest plugin",
+]

@@ -100,3 +100,19 @@ def fetch_latest_headline() -> pd.DataFrame:
         JOIN benchmark.run_summary s ON s.run_id = h.run_id AND s.solver = h.solver
         ORDER BY h.solver, s.run_finished_at DESC
         """)
+
+
+def fetch_latest_totals() -> pd.DataFrame:
+    """Return the most recent run's total cost/tokens per solver.
+
+    `headline_metrics` only exposes `mean_cost_per_solved_task` — the
+    writeup's cost-multiple claim needs the run-level totals from
+    `run_summary` directly, which this queries instead of adding a new
+    connection-management pattern.
+    """
+    return _query("""
+        SELECT DISTINCT ON (solver)
+               solver, run_id, total_cost_usd, total_tokens, run_finished_at
+        FROM benchmark.run_summary
+        ORDER BY solver, run_finished_at DESC
+        """)

@@ -1,0 +1,20 @@
+name: Integration
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Full setup (Docker + Postgres + sandbox image)
+        run: make setup
+
+      - name: Integration tests
+        run: .venv/bin/pytest tests/integration -q

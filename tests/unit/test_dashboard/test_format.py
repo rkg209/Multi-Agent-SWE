@@ -6,7 +6,7 @@ import decimal
 
 import pandas as pd
 
-from dashboard.format import order_solvers, to_display_table
+from dashboard.format import order_solvers, to_display_table, to_markdown_table
 
 
 def test_order_solvers_puts_single_before_multi() -> None:
@@ -46,3 +46,11 @@ def test_to_display_table_renames_and_truncates_run_id() -> None:
     assert display["Run ID"].iloc[0] == "abcdefgh"
     assert "Mean cost / solved ($)" in display.columns
     assert "Hallucination rate (0-1)" in display.columns
+
+
+def test_to_markdown_table_renders_pipe_table() -> None:
+    frame = pd.DataFrame({"Solver": ["single", "multi"], "Success rate (%)": [60.0, 80.0]})
+    markdown = to_markdown_table(frame)
+    assert markdown.startswith("|")
+    assert "single" in markdown
+    assert "multi" in markdown

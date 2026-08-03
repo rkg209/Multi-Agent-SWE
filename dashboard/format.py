@@ -52,3 +52,8 @@ def to_display_table(frame: pd.DataFrame) -> pd.DataFrame:
         )
 
     return display.rename(columns=_COLUMN_LABELS)
+
+
+def to_markdown_table(frame: pd.DataFrame) -> str:
+    """Render a display-ready frame as a GitHub-flavored markdown table."""
+    return frame.to_markdown(index=False)

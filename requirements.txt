@@ -1,7 +1,13 @@
-langgraph>=0.2.0
-litellm>=1.40.0
-psycopg2-binary>=2.9.9
-python-dotenv>=1.0.0
-pyyaml>=6.0
-mcp>=1.0.0
-pytest>=8.0.0
+# This file is the sandbox container's dependency list (installed inside
+# config/docker/Dockerfile:11-12), NOT a mirror of pyproject.toml. It is a
+# deliberate subset — only what agent-generated code running inside
+# swe-sandbox needs at runtime (e.g. no streamlit/altair/docker-sdk, which
+# are host-side/dashboard/orchestration deps that never execute in-sandbox).
+# Keep it a subset on purpose; do not sync it 1:1 with pyproject.toml.
+langgraph==1.2.7
+litellm==1.90.2
+psycopg2-binary==2.9.12
+python-dotenv==1.2.2
+pyyaml==6.0.3
+mcp==1.28.1
+pytest==9.1.1

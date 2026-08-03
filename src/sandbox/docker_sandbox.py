@@ -12,9 +12,10 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.sandbox.image import SANDBOX_IMAGE
+
 logger = logging.getLogger(__name__)
 
-SANDBOX_IMAGE = "swe-sandbox:latest"
 STARTUP_TIMEOUT_SECONDS = 30
 
 
