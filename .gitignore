@@ -50,3 +50,13 @@ CLAUDE.md
 multi-agent-swe-benchmark.md
 progress_report.md
 MANUAL_TESTING.md
+HOW_TO_RUN.md
+PROJECT_JOURNEY.md
+
+# Personal cluster access notes (contain a real username/host) — never publish
+PARAM_Rudra_Quickstart_24m1531.md
+PARAM_Rudra_Training_Workflow.md
+PARAM_RUDRA_LARGE_SCALE.md
+# Any future PARAM Rudra notes/logs (contain real username/host)
+PARAM_Rudra_*.md
+PARAM_RUDRA_*.md

@@ -88,6 +88,34 @@ def test_multi_agent_solver_uses_best_patch_and_reports_no_cap_hit(tmp_path: obj
     assert stats.cap_hit is False
 
 
+def test_multi_agent_solver_scopes_thread_id_per_task_to_avoid_state_leakage(
+    tmp_path: object,
+) -> None:
+    base_dir = tmp_path / "base"  # type: ignore[operator]
+    base_dir.mkdir()
+    (base_dir / "calculator.py").write_text("def subtract(a, b): return a - b\n")
+    run_id = uuid.uuid4()
+    solver = MultiAgentSolver(run_id=run_id)
+
+    fake_final_state = {"patch": "diff", "cost_usd": 0.0, "total_tokens": 1, "iteration": 0}
+    seen_thread_ids: list[str] = []
+
+    def _record_invoke(_state: object, config: dict) -> dict:
+        seen_thread_ids.append(config["configurable"]["thread_id"])
+        return fake_final_state
+
+    with mock_patch("benchmark.solver.build_graph") as mock_build_graph:
+        mock_build_graph.return_value.invoke.side_effect = _record_invoke
+        solver.solve(Task(id="custom-a", source="custom", issue_text="", base_dir=base_dir))
+        solver.solve(Task(id="custom-b", source="custom", issue_text="", base_dir=base_dir))
+
+    assert len(seen_thread_ids) == 2
+    assert seen_thread_ids[0] != seen_thread_ids[1]
+    assert all(str(run_id) in tid for tid in seen_thread_ids)
+    assert "custom-a" in seen_thread_ids[0]
+    assert "custom-b" in seen_thread_ids[1]
+
+
 def test_multi_agent_solver_derives_cap_hit_on_test_cap(tmp_path: object) -> None:
     base_dir = tmp_path / "base"  # type: ignore[operator]
     base_dir.mkdir()

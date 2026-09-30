@@ -162,6 +162,26 @@ def test_after_reviewer_ends_when_budget_exceeded_even_under_cap() -> None:
     assert graph_module._after_reviewer(state) == graph_module.END
 
 
+def test_after_architect_routes_to_developer_under_budget() -> None:
+    state = {"total_tokens": 0, "token_budget": 100_000}
+    assert graph_module._after_architect(state) == "developer"
+
+
+def test_after_architect_ends_when_budget_exceeded() -> None:
+    state = {"total_tokens": 200_000, "token_budget": 100_000}
+    assert graph_module._after_architect(state) == graph_module.END
+
+
+def test_after_developer_multi_routes_to_tester_under_budget() -> None:
+    state = {"total_tokens": 0, "token_budget": 100_000}
+    assert graph_module._after_developer_multi(state) == "tester"
+
+
+def test_after_developer_multi_ends_when_budget_exceeded() -> None:
+    state = {"total_tokens": 200_000, "token_budget": 100_000}
+    assert graph_module._after_developer_multi(state) == graph_module.END
+
+
 def test_multi_mode_drives_dev_review_loop_to_cap_and_derives_cap_hit() -> None:
     calls = {"developer": 0, "tester": 0, "reviewer": 0}
 

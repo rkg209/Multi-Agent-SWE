@@ -38,6 +38,20 @@ def _should_continue(state: GraphState) -> str:
     return "developer"
 
 
+def _after_architect(state: GraphState) -> str:
+    """Route to `developer` unless the budget is already exhausted (FR-43)."""
+    if not _budget_ok(state):
+        return END
+    return "developer"
+
+
+def _after_developer_multi(state: GraphState) -> str:
+    """Route to `tester` unless the budget is already exhausted (FR-43)."""
+    if not _budget_ok(state):
+        return END
+    return "tester"
+
+
 def _after_tester(state: GraphState) -> str:
     """Route to `reviewer` on PASS, back to `developer` on FAIL under cap, else `END`."""
     if not _budget_ok(state):
@@ -88,8 +102,12 @@ def build_graph(
         graph.add_node("tester", tester_node)
         graph.add_node("reviewer", reviewer_node)
         graph.set_entry_point("architect")
-        graph.add_edge("architect", "developer")
-        graph.add_edge("developer", "tester")
+        graph.add_conditional_edges(
+            "architect", _after_architect, {"developer": "developer", END: END}
+        )
+        graph.add_conditional_edges(
+            "developer", _after_developer_multi, {"tester": "tester", END: END}
+        )
         graph.add_conditional_edges(
             "tester", _after_tester, {"reviewer": "reviewer", "developer": "developer", END: END}
         )

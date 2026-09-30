@@ -186,8 +186,9 @@ class MultiAgentSolver:
     def solve(self, task: Task) -> Patch:
         """Produce a patch by running the multi-agent graph in a fresh workspace copy.
 
-        Checkpointed to `.langgraph/<run_id>.sqlite` keyed by `thread_id=run_id`
-        so an interrupted run resumes from the last completed node (FR-41).
+        Checkpointed to `.langgraph/<run_id>.sqlite`, keyed by a `thread_id` scoped to both
+        the run and the task (`"<run_id>:<task_id>"`) so an interrupted run resumes from the
+        last completed node (FR-41) without leaking one task's graph state into another's.
         """
         if task.source != "custom" or task.base_dir is None:
             logger.warning(
@@ -225,7 +226,11 @@ class MultiAgentSolver:
 
             with SqliteSaver.from_conn_string(str(checkpoint_path)) as saver:
                 graph = build_graph({"mode": "multi"}, checkpointer=saver)
-                config = {"configurable": {"thread_id": str(self._run_id)}}
+                # thread_id must be scoped per task, not just per run: LangGraph's checkpointer
+                # merges each invoke()'s input over the previous checkpoint on the same thread,
+                # so a run-wide thread_id would leak one task's state (plan, patch, review_issues,
+                # best_patch, ...) into the next task's initial_state on every multi-task run.
+                config = {"configurable": {"thread_id": f"{self._run_id}:{task.id}"}}
                 with sandbox_task_dir(workspace):
                     final_state = graph.invoke(initial_state, config=config)
 
