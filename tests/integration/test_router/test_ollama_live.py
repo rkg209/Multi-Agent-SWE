@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import urllib.error
+import urllib.request
 import uuid
 
 import pytest
@@ -15,6 +17,16 @@ DATABASE_URL = os.environ.get(
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL")
 
 
+def _ollama_reachable() -> bool:
+    if not OLLAMA_BASE_URL:
+        return False
+    try:
+        with urllib.request.urlopen(f"{OLLAMA_BASE_URL.rstrip('/')}/api/tags", timeout=2):
+            return True
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
 def _can_connect_postgres() -> bool:
     try:
         conn = psycopg2.connect(DATABASE_URL, connect_timeout=3)
@@ -25,8 +37,8 @@ def _can_connect_postgres() -> bool:
 
 
 pytestmark = pytest.mark.skipif(
-    not OLLAMA_BASE_URL or not _can_connect_postgres(),
-    reason="OLLAMA_BASE_URL unset or Postgres unreachable",
+    not _ollama_reachable() or not _can_connect_postgres(),
+    reason="Ollama endpoint unreachable (or OLLAMA_BASE_URL unset) or Postgres unreachable",
 )
 
 

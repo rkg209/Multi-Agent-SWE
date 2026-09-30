@@ -4,15 +4,20 @@
 # override tier, and the role -> tier assignment. Secrets are referenced via
 # ${ENV_VAR} placeholders only -- never literal keys in this file.
 #
-# NOTE: prices below are placeholders copied from public provider list prices
-# at the time of writing. Verify against the provider's current pricing page
-# before relying on cost figures for a real benchmark run.
+# Prices (USD per 1k tokens) verified 2026-09-30:
+#   strong: OpenRouter public models API (/api/v1/models) for qwen/qwen-2.5-72b-instruct
+#           -> $0.36 in / $0.40 out per 1M tokens.
+#   small:  Groq llama-3.1-8b-instant -> $0.05 in / $0.08 out per 1M tokens, taken from
+#           third-party price trackers (Groq's own pricing page is not machine-readable);
+#           spot-check against the Groq console before publishing dollar figures.
+# Runs recorded before this date used input_price_per_1k=0.00035 for the strong tier;
+# historical run_records.total_cost_usd are immutable (NFR-6).
 
 tiers:
   strong:
     provider: openrouter
     model: openrouter/qwen/qwen-2.5-72b-instruct
-    input_price_per_1k: 0.00035
+    input_price_per_1k: 0.00036
     output_price_per_1k: 0.0004
     api_key_env: OPENROUTER_API_KEY
   small:

@@ -9,6 +9,8 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -40,12 +42,20 @@ def _postgres_available() -> bool:
 
 
 def _provider_configured() -> bool:
-    return bool(os.environ.get("OLLAMA_BASE_URL"))
+    """Return True only if the Ollama endpoint in OLLAMA_BASE_URL actually answers."""
+    base_url = os.environ.get("OLLAMA_BASE_URL")
+    if not base_url:
+        return False
+    try:
+        with urllib.request.urlopen(f"{base_url.rstrip('/')}/api/tags", timeout=2):
+            return True
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
 
 
 pytestmark = pytest.mark.skipif(
     not _docker_available() or not _postgres_available() or not _provider_configured(),
-    reason="Docker, Postgres, or a model provider (OLLAMA_BASE_URL) not available",
+    reason="Docker, Postgres, or a reachable model provider (OLLAMA_BASE_URL) not available",
 )
 
 
