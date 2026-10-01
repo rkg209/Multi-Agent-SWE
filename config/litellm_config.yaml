@@ -7,9 +7,9 @@
 # Prices (USD per 1k tokens) verified 2026-09-30:
 #   strong: OpenRouter public models API (/api/v1/models) for qwen/qwen-2.5-72b-instruct
 #           -> $0.36 in / $0.40 out per 1M tokens.
-#   small:  Groq llama-3.1-8b-instant -> $0.05 in / $0.08 out per 1M tokens, taken from
-#           third-party price trackers (Groq's own pricing page is not machine-readable);
-#           spot-check against the Groq console before publishing dollar figures.
+#   small:  OpenRouter meta-llama/llama-3.1-8b-instruct -> $0.05 in / $0.08 out per 1M tokens
+#           (same public models API). Groq retired llama-3.1-8b-instant (model_not_found,
+#           2026-10-02), so the small tier moved to OpenRouter; same model, same price.
 # Runs recorded before this date used input_price_per_1k=0.00035 for the strong tier;
 # historical run_records.total_cost_usd are immutable (NFR-6).
 
@@ -21,11 +21,11 @@ tiers:
     output_price_per_1k: 0.0004
     api_key_env: OPENROUTER_API_KEY
   small:
-    provider: groq
-    model: groq/llama-3.1-8b-instant
+    provider: openrouter
+    model: openrouter/meta-llama/llama-3.1-8b-instruct
     input_price_per_1k: 0.00005
     output_price_per_1k: 0.00008
-    api_key_env: GROQ_API_KEY
+    api_key_env: OPENROUTER_API_KEY
   local:
     provider: ollama
     model: ollama/llama3.1
