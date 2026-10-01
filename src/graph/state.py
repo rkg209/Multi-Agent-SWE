@@ -18,6 +18,7 @@ class GraphState(TypedDict, total=False):
     test_passed: bool
     iteration: int
     max_iterations: int
+    run_tests: bool  # False for real repos: sandbox lacks their deps (single mode)
     solver_config: dict[str, object]
     cost_usd: float
     total_tokens: int

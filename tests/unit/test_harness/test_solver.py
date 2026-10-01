@@ -19,10 +19,46 @@ def test_noop_solver_stats_are_zero() -> None:
     assert NoopSolver().stats() == SolveStats()
 
 
-def test_single_agent_solver_swebench_task_returns_empty_patch_and_zero_stats() -> None:
+def _hydrated_swebench_task(tmp_path: object) -> Task:
+    base_dir = tmp_path / "checkout"  # type: ignore[operator]
+    base_dir.mkdir()
+    (base_dir / "mod.py").write_text("x = 1\n")
+    return Task(
+        id="repo__x-1",
+        source="swebench",
+        issue_text="real problem statement",
+        base_dir=base_dir,
+        repo="o/r",
+        base_commit="abc1234",
+    )
+
+
+def test_single_agent_solver_hydrates_swebench_task_and_runs_graph(tmp_path: object) -> None:
+    hydrated = _hydrated_swebench_task(tmp_path)
+    bare = Task(id="repo__x-1", source="swebench", issue_text="")
+    solver = SingleAgentSolver(run_id=uuid.uuid4())
+
+    with (
+        mock_patch("benchmark.solver.hydrate_task", return_value=hydrated) as hydrate,
+        mock_patch("benchmark.solver.build_graph") as mock_build_graph,
+    ):
+        mock_build_graph.return_value.invoke.return_value = {"patch": "diff", "total_tokens": 7}
+        patch = solver.solve(bare)
+
+    hydrate.assert_called_once_with(bare)
+    state = mock_build_graph.return_value.invoke.call_args.args[0]
+    assert state["issue_text"] == "real problem statement"
+    assert state["run_tests"] is False
+    assert state["max_iterations"] == 1
+    assert patch.diff == "diff"
+    assert solver.stats().total_tokens == 7
+
+
+def test_single_agent_solver_unresolvable_task_returns_empty_patch() -> None:
     task = Task(id="repo__x-1", source="swebench", issue_text="")
     solver = SingleAgentSolver(run_id=uuid.uuid4())
-    patch = solver.solve(task)
+    with mock_patch("benchmark.solver.hydrate_task", return_value=task):
+        patch = solver.solve(task)
     assert patch.diff == ""
     assert solver.stats() == SolveStats()
 
@@ -50,12 +86,22 @@ def test_single_agent_solver_stats_reflect_graph_output(tmp_path: object) -> Non
     assert stats.iterations == 1
 
 
-def test_multi_agent_solver_swebench_task_returns_empty_patch_and_zero_stats() -> None:
-    task = Task(id="repo__x-1", source="swebench", issue_text="")
+def test_multi_agent_solver_hydrates_swebench_task_and_runs_graph(tmp_path: object) -> None:
+    hydrated = _hydrated_swebench_task(tmp_path)
+    bare = Task(id="repo__x-1", source="swebench", issue_text="")
     solver = MultiAgentSolver(run_id=uuid.uuid4())
-    patch = solver.solve(task)
-    assert patch.diff == ""
-    assert solver.stats() == SolveStats()
+
+    with (
+        mock_patch("benchmark.solver.hydrate_task", return_value=hydrated),
+        mock_patch("benchmark.solver.build_graph") as mock_build_graph,
+        mock_patch("benchmark.solver.CHECKPOINT_DIR", tmp_path),
+    ):
+        mock_build_graph.return_value.invoke.return_value = {"patch": "diff", "total_tokens": 9}
+        patch = solver.solve(bare)
+
+    state = mock_build_graph.return_value.invoke.call_args.args[0]
+    assert state["issue_text"] == "real problem statement"
+    assert patch.diff == "diff"
 
 
 def test_multi_agent_solver_uses_best_patch_and_reports_no_cap_hit(tmp_path: object) -> None:

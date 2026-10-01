@@ -2,8 +2,9 @@
 
 Two sources (FR-20), one shape:
 - SWE-bench: instance IDs listed in a version-locked `config/tasks/<subset_id>.txt` (NFR-7). Full
-  issue text/repo state is resolved by `sb-cli` itself at scoring time (Spec 03 doesn't reimplement
-  dataset fetching); only the instance ID matters here.
+  only the instance ID is read here. Issue text and the repo checkout at `base_commit` are
+  resolved lazily by `benchmark.swebench_data.hydrate_task` when a solver starts the task, so
+  loading a subset never touches the network; `sb-cli` still scores at the end.
 - Custom: tickets under `benchmark/tasks/custom/<id>/` (`issue.md`, `base/`, `hidden_test.py`,
   `meta.json`), fully self-contained in-repo.
 """
@@ -32,7 +33,9 @@ class Task:
     source: str  # "swebench" | "custom"
     issue_text: str
     hidden_tests: tuple[str, ...] = ()
-    base_dir: Path | None = None  # only set for source="custom"
+    base_dir: Path | None = None  # custom: in-repo `base/`; swebench: set by `hydrate_task`
+    repo: str | None = None  # swebench only, filled by `hydrate_task`
+    base_commit: str | None = None  # swebench only, filled by `hydrate_task`
 
 
 def _load_swebench_ids(subset_id: str) -> list[str]:

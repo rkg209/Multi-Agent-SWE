@@ -18,6 +18,7 @@ from typing import Protocol
 from langgraph.checkpoint.sqlite import SqliteSaver
 
 from benchmark.loader import Task
+from benchmark.swebench_data import hydrate_task
 from src.graph.graph import (
     DEFAULT_MAX_ITERATIONS,
     DEFAULT_MAX_REVIEW_ITERATIONS,
@@ -121,15 +122,17 @@ class SingleAgentSolver:
     def solve(self, task: Task) -> Patch:
         """Produce a patch by running the single-agent graph in a fresh workspace copy.
 
-        SWE-bench tasks carry no local repo or issue text (Spec 03 doesn't
-        fetch the dataset) — short-circuits to an empty patch, an honest FAIL.
+        SWE-bench tasks are hydrated first (real issue text + repo checkout at `base_commit`,
+        cached under `.swebench_cache/`). Their in-graph `pytest` run is disabled and the loop
+        capped at one pass: the network-less sandbox has none of the repo's dependencies, so the
+        run would only burn tokens re-submitting the same patch.
         """
-        if task.source != "custom" or task.base_dir is None:
+        task = hydrate_task(task)
+        if task.base_dir is None:
             logger.warning(
-                "SingleAgentSolver cannot solve %r (source=%r has no local base_dir); "
+                "SingleAgentSolver cannot solve %r (no base_dir after hydration); "
                 "returning empty patch",
                 task.id,
-                task.source,
             )
             self._stats = SolveStats()
             return Patch(diff="")
@@ -145,7 +148,8 @@ class SingleAgentSolver:
                 "issue_text": task.issue_text,
                 "workspace": str(workspace),
                 "iteration": 0,
-                "max_iterations": DEFAULT_MAX_ITERATIONS,
+                "max_iterations": 1 if task.source == "swebench" else DEFAULT_MAX_ITERATIONS,
+                "run_tests": task.source != "swebench",
                 "solver_config": {"mode": "single"},
                 "cost_usd": 0.0,
                 "total_tokens": 0,
@@ -190,12 +194,12 @@ class MultiAgentSolver:
         the run and the task (`"<run_id>:<task_id>"`) so an interrupted run resumes from the
         last completed node (FR-41) without leaking one task's graph state into another's.
         """
-        if task.source != "custom" or task.base_dir is None:
+        task = hydrate_task(task)
+        if task.base_dir is None:
             logger.warning(
-                "MultiAgentSolver cannot solve %r (source=%r has no local base_dir); "
+                "MultiAgentSolver cannot solve %r (no base_dir after hydration); "
                 "returning empty patch",
                 task.id,
-                task.source,
             )
             self._stats = SolveStats()
             return Patch(diff="")

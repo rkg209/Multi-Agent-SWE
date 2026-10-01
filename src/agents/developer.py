@@ -17,6 +17,12 @@ import uuid
 from pathlib import Path
 from typing import cast
 
+from src.agents.context import (
+    MAX_CANDIDATE_LISTING,
+    fit_to_budget,
+    is_large_repo,
+    rank_files,
+)
 from src.graph.state import GraphState
 from src.metrics.turn_tracer import RecordingToolBelt, trace_turn
 from src.router.router import LLMRequest, complete
@@ -43,8 +49,39 @@ SYSTEM_PROMPT = (
 )
 
 
+def large_repo_files(state: GraphState) -> tuple[list[str], list[str]] | None:
+    """For a non-flat repo return `(files shown, all ranked candidates)`, else None.
+
+    Ranking seeds from the Architect's `plan_files` (multi mode) and the issue text.
+    """
+    workspace = state.get("workspace")
+    if not workspace:
+        return None
+    root = Path(workspace)
+    if not is_large_repo(root):
+        return None
+    ranked = rank_files(root, state.get("issue_text", ""), state.get("plan_files"))
+    return fit_to_budget(root, ranked), ranked
+
+
+def _build_large_context(belt: ToolBelt, chosen: list[str], ranked: list[str]) -> str:
+    """Full contents of the selected files, plus a listing of the other ranked candidates."""
+    parts = [f"--- {rel} ---\n{belt.read_file(rel)}\n" for rel in chosen]
+    others = [r for r in ranked if r not in chosen][:MAX_CANDIDATE_LISTING]
+    if others:
+        parts.append("Other candidate files (not shown; do not edit):\n" + "\n".join(others) + "\n")
+    return "".join(parts)
+
+
 def build_context(belt: ToolBelt, state: GraphState) -> str:
-    """Concatenate `list_dir(".")` entries' contents, skipping fixtures, capped at ~8000 chars."""
+    """Show the repo to the model: whole top-level files for toy repos, ranked files otherwise.
+
+    Flat repos: concatenate `list_dir(".")` contents, skipping fixtures, capped at ~8000 chars.
+    Real repos: the few files `large_repo_files` selects, uncut (the model rewrites whole files).
+    """
+    large = large_repo_files(state)
+    if large is not None:
+        return _build_large_context(belt, *large)
     parts: list[str] = []
     total = 0
     for entry in sorted(belt.list_dir(".")):
@@ -131,8 +168,13 @@ def developer_node(state: GraphState) -> GraphState:
     ) as recorder:
         belt = RecordingToolBelt(ToolBelt(root), recorder)
 
-        known_entries = {e for e in belt.list_dir(".") if e not in SKIP_ENTRIES}
-        context = build_context(belt, state)
+        large = large_repo_files(state)
+        if large is not None:
+            known_entries = set(large[0])
+            context = _build_large_context(belt, *large)
+        else:
+            known_entries = {e for e in belt.list_dir(".") if e not in SKIP_ENTRIES}
+            context = build_context(belt, state)
         messages = build_messages(context, state)
         response = complete(
             LLMRequest(
@@ -162,7 +204,7 @@ def developer_node(state: GraphState) -> GraphState:
         is_multi = state.get("solver_config", {}).get("mode") == "multi"
         test_stdout = state.get("test_stdout", "")
         test_passed = state.get("test_passed", False)
-        if not is_multi:
+        if not is_multi and state.get("run_tests", True):
             try:
                 exec_result = belt.exec("pytest -q")
                 test_stdout = exec_result.stdout + exec_result.stderr

@@ -60,3 +60,6 @@ PARAM_RUDRA_LARGE_SCALE.md
 # Any future PARAM Rudra notes/logs (contain real username/host)
 PARAM_Rudra_*.md
 PARAM_RUDRA_*.md
+
+# SWE-bench repo checkouts + instance cache (Action 1)
+.swebench_cache/

@@ -20,6 +20,7 @@ dependencies = [
     "sb-cli==0.1.5",
     "langgraph-checkpoint-sqlite==3.1.0",
     "pandas==3.0.3",
+    "datasets==5.0.1",
     "altair==6.2.2",
     "tabulate==0.10.0",
 ]
