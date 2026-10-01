@@ -6,11 +6,15 @@ import uuid
 from pathlib import Path
 from typing import cast
 
+from src.agents.context import clip_diff
 from src.graph.contracts import Review
 from src.graph.state import GraphState
 from src.metrics.turn_tracer import RecordingToolBelt, trace_turn
 from src.router.router import LLMRequest, complete
 from src.tools.toolbelt import ToolBelt
+
+# Output cap per call: unbounded generations from small models ran away to >100k tokens.
+REVIEWER_MAX_TOKENS = 1024
 
 SYSTEM_PROMPT = (
     "You are a senior engineer reviewing a patch for correctness, quality, and security.\n"
@@ -31,7 +35,7 @@ def parse_review(content: str) -> Review:
 
 def build_messages(issue_text: str, diff: str) -> list[dict[str, str]]:
     """Build chat messages: system prompt pinning the output contract, user = issue + diff."""
-    user_content = f"Issue:\n{issue_text}\n\nFinal diff:\n{diff}"
+    user_content = f"Issue:\n{issue_text}\n\nFinal diff:\n{clip_diff(diff)}"
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_content},
@@ -45,7 +49,10 @@ def reviewer_node(state: GraphState) -> GraphState:
     review_iteration = state.get("review_iteration", 0)
 
     with trace_turn(
-        run_id=run_id, task_id=state["task_id"], agent_role="reviewer", turn_index=review_iteration
+        run_id=run_id,
+        task_id=state["task_id"],
+        agent_role="reviewer",
+        turn_index=review_iteration,
     ) as recorder:
         belt = RecordingToolBelt(ToolBelt(root), recorder)
         diff = belt.diff()
@@ -54,6 +61,7 @@ def reviewer_node(state: GraphState) -> GraphState:
             LLMRequest(
                 messages=messages,
                 role="reviewer",
+                max_tokens=REVIEWER_MAX_TOKENS,
                 run_id=run_id,
                 task_id=state["task_id"],
                 turn_index=review_iteration,

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import subprocess
 import uuid
+from pathlib import Path
 from unittest.mock import patch as mock_patch
 
 from benchmark.loader import Task
@@ -49,7 +51,7 @@ def test_single_agent_solver_hydrates_swebench_task_and_runs_graph(tmp_path: obj
     state = mock_build_graph.return_value.invoke.call_args.args[0]
     assert state["issue_text"] == "real problem statement"
     assert state["run_tests"] is False
-    assert state["max_iterations"] == 1
+    assert state["max_iterations"] == 3
     assert patch.diff == "diff"
     assert solver.stats().total_tokens == 7
 
@@ -186,3 +188,25 @@ def test_multi_agent_solver_derives_cap_hit_on_test_cap(tmp_path: object) -> Non
         solver.solve(task)
 
     assert solver.stats().cap_hit is True
+
+
+def test_solvers_copy_visible_tests_into_workspace_before_baseline(tmp_path: object) -> None:
+    from benchmark.loader import load_tasks
+
+    task = next(t for t in load_tasks("custom-only") if t.id == "custom-001-calc-add")
+    seen: dict[str, object] = {}
+
+    def fake_invoke(state: dict[str, object], *args: object, **kwargs: object) -> dict[str, str]:
+        workspace = Path(str(state["workspace"]))
+        seen["visible"] = (workspace / "visible_test.py").is_file()
+        seen["hidden"] = (workspace / "hidden_test.py").exists()
+        seen["clean"] = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=workspace, capture_output=True, text=True
+        ).stdout
+        return {"patch": ""}
+
+    with mock_patch("benchmark.solver.build_graph") as mock_build_graph:
+        mock_build_graph.return_value.invoke.side_effect = fake_invoke
+        SingleAgentSolver(run_id=uuid.uuid4()).solve(task)
+
+    assert seen == {"visible": True, "hidden": False, "clean": ""}  # in baseline => not in diff

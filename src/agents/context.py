@@ -144,3 +144,15 @@ def select_context_files(
 ) -> list[str]:
     """Pick up to `MAX_CONTEXT_FILES` ranked files that fit `LARGE_CONTEXT_CHAR_CAP` in total."""
     return fit_to_budget(root, rank_files(root, issue_text, plan_files))
+
+
+MAX_DIFF_CHARS = 20_000
+
+
+def clip_diff(diff: str) -> str:
+    """Cap a diff shown to Tester/Reviewer so a runaway patch cannot overflow model context."""
+    if len(diff) <= MAX_DIFF_CHARS:
+        return diff
+    return (
+        diff[:MAX_DIFF_CHARS] + f"\n... [diff truncated: {len(diff) - MAX_DIFF_CHARS} more chars]"
+    )

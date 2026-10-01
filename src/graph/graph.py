@@ -33,6 +33,8 @@ def _should_continue(state: GraphState) -> str:
         return END
     if state.get("test_passed"):
         return END
+    if not state.get("run_tests", True) and state.get("patch", "").strip():
+        return END  # no test signal exists; a non-empty patch is all there is to wait for
     if state.get("iteration", 0) >= state.get("max_iterations", DEFAULT_MAX_ITERATIONS):
         return END
     return "developer"

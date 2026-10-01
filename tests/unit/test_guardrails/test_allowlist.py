@@ -86,3 +86,11 @@ def test_gate_is_wired_into_both_tool_servers() -> None:
     exec_source = (repo_root / "src" / "tools" / "runcode_server.py").read_text()
     assert "check_write(" in fs_source
     assert "check_exec(" in exec_source
+
+
+def test_real_config_protects_both_test_files() -> None:
+    from src.guardrails.allowlist import load_allowlist_config
+
+    config = load_allowlist_config()
+    assert check_write("hidden_test.py", config).allowed is False
+    assert check_write("visible_test.py", config).allowed is False

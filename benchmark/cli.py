@@ -19,7 +19,15 @@ from benchmark.errors import HarnessError
 from benchmark.loader import load_tasks
 from benchmark.results import write_run_record
 from benchmark.scorer import score
-from benchmark.solver import MultiAgentSolver, NoopSolver, SingleAgentSolver, Solver
+from benchmark.solver import (
+    MultiAgentSolver,
+    NoopSolver,
+    Patch,
+    SingleAgentSolver,
+    Solver,
+    SolveStats,
+)
+from src.errors import RouterError
 from src.metrics.aggregate import percentile
 
 logger = logging.getLogger(__name__)
@@ -80,11 +88,17 @@ def run(argv: list[str] | None = None) -> int:
 
     for task in tasks:
         start = time.monotonic()
-        patch = solver.solve(task)
+        try:
+            patch = solver.solve(task)
+            stats = solver.stats()
+        except RouterError as exc:
+            # A model call failed (e.g. context overflow); record this task as an empty-patch
+            # FAIL and keep going rather than losing the rest of the run.
+            logger.error("Solver failed on %s: %s", task.id, exc)
+            patch, stats = Patch(diff=""), SolveStats()
         result = score(task, patch, run_id=str(run_id), sbcli_output_dir=sbcli_output_dir)
         duration = time.monotonic() - start
 
-        stats = solver.stats()
         write_run_record(
             run_id=run_id,
             task_id=task.id,

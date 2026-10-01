@@ -72,3 +72,12 @@ def test_comment_and_blank_lines_ignored(tmp_path: Path, monkeypatch: pytest.Mon
 
     tasks = load_tasks("mini", include_custom=False)
     assert [t.id for t in tasks] == ["repo__x-1", "repo__x-2"]
+
+
+def test_custom_tickets_expose_visible_tests_but_not_hidden_ones() -> None:
+    custom = [t for t in load_tasks("lite-5") if t.source == "custom"]
+    assert custom
+    for task in custom:
+        assert [p.name for p in task.visible_tests] == ["visible_test.py"]
+        assert task.hidden_tests == ("hidden_test.py",)
+        assert not (task.base_dir / "hidden_test.py").exists()  # type: ignore[operator]

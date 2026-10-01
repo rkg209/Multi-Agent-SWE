@@ -17,6 +17,9 @@ from src.tools.toolbelt import ToolBelt
 
 logger = logging.getLogger(__name__)
 
+# Output cap per call: unbounded generations from small models ran away to >100k tokens.
+ARCHITECT_MAX_TOKENS = 1024
+
 SYSTEM_PROMPT = (
     "You are a software architect planning a fix for a bug in a small repository.\n"
     "Reply in exactly this format:\n\n"
@@ -70,7 +73,10 @@ def architect_node(state: GraphState) -> GraphState:
     iteration = state.get("iteration", 0)
 
     with trace_turn(
-        run_id=run_id, task_id=state["task_id"], agent_role="architect", turn_index=iteration
+        run_id=run_id,
+        task_id=state["task_id"],
+        agent_role="architect",
+        turn_index=iteration,
     ) as recorder:
         belt = RecordingToolBelt(ToolBelt(root), recorder)
 
@@ -80,6 +86,7 @@ def architect_node(state: GraphState) -> GraphState:
             LLMRequest(
                 messages=messages,
                 role="architect",
+                max_tokens=ARCHITECT_MAX_TOKENS,
                 run_id=run_id,
                 task_id=state["task_id"],
                 turn_index=iteration,

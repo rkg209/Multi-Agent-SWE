@@ -8,6 +8,7 @@ write:
   denied_path_patterns:
     - ".git/**"
     - "hidden_test.py"
+    - "visible_test.py"
 
 exec:
   allowed_command_prefixes:

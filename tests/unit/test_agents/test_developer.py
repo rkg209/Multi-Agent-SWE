@@ -225,3 +225,66 @@ def test_developer_node_writes_only_through_belt(tmp_path: Path) -> None:
 
     written = (tmp_path / "calculator.py").read_text()
     assert "def add" in written
+
+
+def test_parse_and_apply_search_replace_edits() -> None:
+    from src.agents.developer import apply_edits, parse_edit_blocks
+
+    body = (
+        "<<<<<<< SEARCH\n    return a - b\n=======\n    return a + b\n>>>>>>> REPLACE\n"
+        "<<<<<<< SEARCH\nx = 1\n=======\n>>>>>>> REPLACE"
+    )
+    edits = parse_edit_blocks(body)
+    assert edits == [("    return a - b", "    return a + b"), ("x = 1", "")]
+    text, applied, failed = apply_edits("def f(a, b):\n    return a - b\nx = 1\n", edits)
+    assert (applied, failed) == (2, 0)
+    assert "return a + b" in text and "x = 1" not in text
+
+
+def test_apply_edits_tolerates_trailing_whitespace_and_skips_misses() -> None:
+    from src.agents.developer import apply_edits
+
+    text, applied, failed = apply_edits(
+        "a = 1   \nb = 2\nc = 3\n", [("a = 1\nb = 2", "a = 10\nb = 20"), ("missing", "z")]
+    )
+    assert (applied, failed) == (1, 1)
+    assert text == "a = 10\nb = 20\nc = 3\n"
+
+
+def test_large_repo_rejects_full_file_rewrite_and_applies_edits(tmp_path: Path) -> None:
+    from src.agents.developer import _apply_large_repo_edit
+    from src.tools.toolbelt import ToolBelt
+
+    (tmp_path / "m.py").write_text("keep = 1\nbug = 1\n")
+    belt = ToolBelt(tmp_path)
+    assert _apply_large_repo_edit(belt, "m.py", "bug = 2\n") is None  # whole-file rewrite
+    edited = _apply_large_repo_edit(
+        belt, "m.py", "<<<<<<< SEARCH\nbug = 1\n=======\nbug = 2\n>>>>>>> REPLACE"
+    )
+    assert edited == "keep = 1\nbug = 2\n"
+
+
+def test_build_messages_uses_search_replace_prompt_for_large_repos() -> None:
+    from src.agents.developer import SEARCH_REPLACE_PROMPT, SYSTEM_PROMPT, build_messages
+
+    assert build_messages("ctx", {}, search_replace=True)[0]["content"] == SEARCH_REPLACE_PROMPT
+    assert build_messages("ctx", {})[0]["content"] == SYSTEM_PROMPT
+
+
+def test_apply_notes_explain_rejected_edits_and_feed_back_into_messages(tmp_path: Path) -> None:
+    from src.agents.developer import _apply_large_repo_edit, build_messages
+    from src.tools.toolbelt import ToolBelt
+
+    (tmp_path / "m.py").write_text("a = 1\n")
+    notes: list[str] = []
+    assert _apply_large_repo_edit(ToolBelt(tmp_path), "m.py", "a = 2\n", notes) is None
+    assert "m.py" in notes[0]
+    user = build_messages("ctx", {"apply_feedback": notes[0]}, search_replace=True)[1]["content"]
+    assert "could not be applied" in user and "m.py" in user
+
+
+def test_edit_parser_tolerates_missing_chevrons() -> None:
+    from src.agents.developer import parse_edit_blocks
+
+    body = "SEARCH\nold line\n=======\nnew line\nREPLACE"
+    assert parse_edit_blocks(body) == [("old line", "new line")]

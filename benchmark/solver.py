@@ -123,9 +123,9 @@ class SingleAgentSolver:
         """Produce a patch by running the single-agent graph in a fresh workspace copy.
 
         SWE-bench tasks are hydrated first (real issue text + repo checkout at `base_commit`,
-        cached under `.swebench_cache/`). Their in-graph `pytest` run is disabled and the loop
-        capped at one pass: the network-less sandbox has none of the repo's dependencies, so the
-        run would only burn tokens re-submitting the same patch.
+        cached under `.swebench_cache/`). Their in-graph `pytest` run is disabled: the network-less
+        sandbox has none of the repo's dependencies. The loop instead stops once a non-empty patch
+        exists, and re-prompts (with the reason) if the model's edits did not apply.
         """
         task = hydrate_task(task)
         if task.base_dir is None:
@@ -140,6 +140,8 @@ class SingleAgentSolver:
         with tempfile.TemporaryDirectory(prefix=f"solve-{task.id}-") as tmp:
             workspace = Path(tmp)
             shutil.copytree(task.base_dir, workspace, dirs_exist_ok=True)
+            for visible_test in task.visible_tests:
+                shutil.copy2(visible_test, workspace / visible_test.name)
             init_baseline_repo(workspace)
 
             initial_state = {
@@ -148,7 +150,7 @@ class SingleAgentSolver:
                 "issue_text": task.issue_text,
                 "workspace": str(workspace),
                 "iteration": 0,
-                "max_iterations": 1 if task.source == "swebench" else DEFAULT_MAX_ITERATIONS,
+                "max_iterations": DEFAULT_MAX_ITERATIONS,
                 "run_tests": task.source != "swebench",
                 "solver_config": {"mode": "single"},
                 "cost_usd": 0.0,
@@ -210,6 +212,8 @@ class MultiAgentSolver:
         with tempfile.TemporaryDirectory(prefix=f"solve-{task.id}-") as tmp:
             workspace = Path(tmp)
             shutil.copytree(task.base_dir, workspace, dirs_exist_ok=True)
+            for visible_test in task.visible_tests:
+                shutil.copy2(visible_test, workspace / visible_test.name)
             init_baseline_repo(workspace)
 
             initial_state = {
@@ -222,6 +226,7 @@ class MultiAgentSolver:
                 "review_iteration": 0,
                 "max_test_iterations": DEFAULT_MAX_TEST_ITERATIONS,
                 "max_review_iterations": DEFAULT_MAX_REVIEW_ITERATIONS,
+                "run_tests": task.source != "swebench",
                 "solver_config": {"mode": "multi"},
                 "cost_usd": 0.0,
                 "total_tokens": 0,

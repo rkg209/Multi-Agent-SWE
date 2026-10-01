@@ -34,6 +34,7 @@ class Task:
     issue_text: str
     hidden_tests: tuple[str, ...] = ()
     base_dir: Path | None = None  # custom: in-repo `base/`; swebench: set by `hydrate_task`
+    visible_tests: tuple[Path, ...] = ()  # custom: public tests copied into the workspace
     repo: str | None = None  # swebench only, filled by `hydrate_task`
     base_commit: str | None = None  # swebench only, filled by `hydrate_task`
 
@@ -72,6 +73,7 @@ def _load_custom_tickets() -> list[Task]:
                 issue_text=issue_text,
                 hidden_tests=(entry_point_test,),
                 base_dir=ticket_dir / "base",
+                visible_tests=tuple(sorted(ticket_dir.glob("visible_test*.py"))),
             )
         )
     return tickets

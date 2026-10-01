@@ -69,3 +69,10 @@ def test_digit_leading_snake_name_matches_migration_filename(tmp_path: Path) -> 
     _make_repo(tmp_path, {"pkg/migrations/0011_update_proxy_permissions.py": "pass\n"})
     ranked = context.rank_files(tmp_path, "Migration auth.0011_update_proxy_permissions fails")
     assert ranked[0] == "pkg/migrations/0011_update_proxy_permissions.py"
+
+
+def test_clip_diff_caps_runaway_diffs() -> None:
+    assert context.clip_diff("small") == "small"
+    clipped = context.clip_diff("x" * (context.MAX_DIFF_CHARS + 500))
+    assert len(clipped) < context.MAX_DIFF_CHARS + 100
+    assert "diff truncated: 500 more chars" in clipped

@@ -230,3 +230,13 @@ def test_multi_mode_drives_dev_review_loop_to_cap_and_derives_cap_hit() -> None:
         and final.get("review_iteration", 0) >= final.get("max_review_iterations", 0)
     )
     assert cap_hit is True
+
+
+def test_single_mode_without_tests_stops_once_a_patch_exists() -> None:
+    from langgraph.graph import END
+
+    from src.graph.graph import _should_continue
+
+    base = {"run_tests": False, "iteration": 1, "max_iterations": 3}
+    assert _should_continue({**base, "patch": "diff --git a b"}) == END
+    assert _should_continue({**base, "patch": ""}) == "developer"

@@ -82,3 +82,28 @@ def test_tester_node_records_fail_without_best_patch(tmp_path: Path) -> None:
     assert new_state["test_passed"] is False
     assert new_state["test_iteration"] == 1
     assert "best_patch" not in new_state
+
+
+def test_tester_skips_execution_and_passes_through_when_run_tests_false(tmp_path: Path) -> None:
+    state = _state(tmp_path, uuid.uuid4())
+    state["run_tests"] = False
+    with patch.object(tester, "complete", return_value=_fake_response()):
+        with patch.object(ToolBelt, "exec") as mock_exec:
+            with patch.object(ToolBelt, "diff", return_value="diff --git a/x.py ..."):
+                new_state = tester.tester_node(state)
+
+    mock_exec.assert_not_called()
+    assert new_state["test_passed"] is True
+    assert "not executed" in new_state["test_stdout"]
+    assert new_state["best_patch"] == state["patch"]
+
+
+def test_tester_without_runnable_tests_fails_on_empty_diff(tmp_path: Path) -> None:
+    state = _state(tmp_path, uuid.uuid4())
+    state["run_tests"] = False
+    with patch.object(tester, "complete", return_value=_fake_response()):
+        with patch.object(ToolBelt, "diff", return_value=""):
+            new_state = tester.tester_node(state)
+
+    assert new_state["test_passed"] is False
+    assert "no change" in new_state["test_stdout"]
